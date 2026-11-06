@@ -112,7 +112,7 @@ All members will collaborate on API design, integration testing, debugging, depl
 | ----- | ----- |
 | **Nov 9–15** | Set up the GitHub repository, React and Express projects, PostgreSQL schemas, and shared API contracts. Implement initial authentication, authorization middleware, and core course management APIs. |
 | **Nov 16–22** | Develop dashboards, announcements, quiz interfaces, and core backend APIs. Implement S3 integration, PDF uploads, and initial text extraction. Begin frontend-backend integration. |
-| **Nov 23–29** | Complete quiz submissions, grading, PDF keyword search, and shared-note functionality. Integrate core features and prepare a functional demonstration by Nov 26 for the Nov 27 presentation. |
+| **Nov 23–29** | Complete and integrate core quiz, PDF search, and resource-sharing workflows by Nov 26 for the presentation. Use the remaining days for testing, bug fixes, and improvements. |
 | **Nov 30–Dec 6** | Conduct end-to-end testing, resolve integration issues, finalize deployment, and prepare the README, AI session documentation, and demonstration video for final submission. |
 
 ### **3.3 Integration and Risk Management**
@@ -129,10 +129,12 @@ Key risks include inconsistent API interfaces, authorization errors, maintenance
 
 **Initial Technical Hypotheses:** We considered React for the frontend, a backend service for application logic, and a relational database for course information. We also explored storing PDFs separately and extracting their text to enable keyword searches.
 
-**Open Questions:** A major uncertainty was database schema complexity. We needed to determine whether to use shared tables or separate schemas for individual courses while ensuring data isolation and efficient queries. We also questioned how to manage relationships among users, enrollments, quizzes, submissions, and resources without excessive complexity. Other concerns included implementing role-based permissions, integrating PDF processing with cloud storage, and completing all core features within the project timeline.
+**Open Questions:** A major uncertainty was database schema complexity. We initially considered separate schemas for individual courses but were uncertain whether this approach would be more maintainable than shared tables while supporting efficient course-specific queries. We also questioned how to manage relationships among users, enrollments, quizzes, submissions, and resources without excessive complexity. Other concerns included implementing role-based permissions, integrating PDF processing with cloud storage, and completing all core features within the project timeline.
 
 ### **4.2 Exploration and Evaluation**
 
-Through team discussions, course materials, and technical documentation, we refined our understanding of LearnFlow's architecture and implementation challenges. We compared approaches for organizing course data, managing user permissions, and processing uploaded PDFs. These investigations helped us identify dependencies between components and establish a more realistic project scope.
+Our team initially proposed using separate PostgreSQL schemas for each course to organize course-specific data. During AI-assisted exploration, AI suggested an alternative approach: using shared tables with `course_id` filtering to simplify database maintenance and schema updates.
 
-One specific example of AI-assisted exploration involved PostgreSQL database design. We used AI to explore alternatives between shared tables for all courses and separate databases for individual courses. AI also suggested using a single database with separate schemas for course-specific data. Rather than adopting this suggestion immediately, we evaluated the approaches based on data isolation, query complexity, maintenance overhead, and integration requirements. We selected the separate-schema approach because it provides logical separation between courses without requiring multiple database instances.
+We evaluated both approaches based on query complexity, data organization, and maintainability. While shared tables would simplify migrations, separate schemas provide clearer logical separation between courses. Since LearnFlow's dashboard and PDF search operate within individual courses, we decided to retain our original separate-schema design, despite the additional maintenance required for schema updates.
+
+This decision demonstrates how we critically evaluated AI suggestions against our project requirements rather than adopting them directly.
