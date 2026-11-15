@@ -7,7 +7,12 @@ info:
     All course endpoints require membership or administrator authorization; archived courses are administrator-only
     and read-only. Route parameters are IDs, not schema names; server resolves authorized course schema. Presigned
     URLs must be short-lived and authorization-checked. Instructor and administrator restrictions are described
-    in operation text and must be implemented in middleware.
+    in operation text and must be implemented in middleware. Accounts are created only by administrators;
+    public registration is not supported. New accounts must replace their generated temporary password
+    on first login. While mustChangePassword is true, middleware permits only GET /api/auth/me,
+    POST /api/auth/change-password, and POST /api/auth/logout; all other protected operations return
+    403 with error PASSWORD_CHANGE_REQUIRED, including administrator operations. Check this persisted
+    user flag on every protected request. The initial administrator is provisioned outside the public API.
 servers:
 - url: http://localhost:3000
   description: Local Express API
@@ -21,50 +26,55 @@ tags:
 - name: Quiz Submissions
 - name: Resources
 paths:
-  /api/auth/register:
+  /api/auth/change-password:
     post:
       tags:
       - Authentication
-      operationId: post_api_auth_register
-      summary: Register account
+      operationId: post_api_auth_change_password
+      summary: Change own password, including required first-login reset
+      description: Changes the authenticated user's password, clears mustChangePassword, and invalidates all sessions so they must log in again.
+      security:
+      - sessionCookie: []
       requestBody:
         required: true
         content:
           application/json:
             schema:
-              type: object
-              properties:
-                name:
-                  type: string
-                email:
-                  type: string
-                password:
-                  type: string
-              required:
-              - name
-              - email
-              - password
+              $ref: '#/components/schemas/ChangePasswordRequest'
       responses:
-        '201':
-          description: Success
+        '204':
+          description: Password changed and all sessions invalidated; log in again with the new password.
+          headers:
+            Set-Cookie:
+              description: Clears the connect.sid session cookie.
+              schema:
+                type: string
+        '400':
+          description: Invalid input, password policy violation, or new password matches current password
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/User'
-        '400':
-          description: Invalid input
+                $ref: '#/components/schemas/Error'
         '401':
-          description: Not authenticated
+          description: Missing, invalid, or expired session
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
         '403':
-          description: Insufficient permission
-        '404':
-          description: Not found
+          description: Current password is incorrect
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
   /api/auth/login:
     post:
       tags:
       - Authentication
       operationId: post_api_auth_login
       summary: Log in and establish session
+      description: Authenticates the user and returns mustChangePassword to indicate whether a restricted first-login session requires a password change.
+      security: []
       requestBody:
         required: true
         content:
@@ -74,51 +84,50 @@ paths:
               properties:
                 email:
                   type: string
+                  format: email
                 password:
                   type: string
+                  format: password
+                  writeOnly: true
               required:
               - email
               - password
       responses:
-        '201':
-          description: Success
+        '200':
+          description: Authenticated; mustChangePassword indicates whether a first-login reset is required
+          headers:
+            Set-Cookie:
+              description: Sets connect.sid as an HttpOnly session cookie; use Secure over HTTPS and SameSite protection.
+              schema:
+                type: string
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/User'
-        '400':
-          description: Invalid input
         '401':
-          description: Not authenticated
-        '403':
-          description: Insufficient permission
-        '404':
-          description: Not found
+          description: Login failed for any reason, including invalid input, invalid credentials, or an inactive account.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
   /api/auth/logout:
     post:
       tags:
       - Authentication
       operationId: post_api_auth_logout
-      summary: Log out and invalidate session
+      description: Log out and invalidate session
       security:
       - sessionCookie: []
       responses:
-        '201':
-          description: Success
-        '400':
-          description: Invalid input
-        '401':
-          description: Not authenticated
-        '403':
-          description: Insufficient permission
-        '404':
-          description: Not found
+        '204':
+          description: Logged out; session invalidated
   /api/auth/me:
     get:
       tags:
       - Authentication
       operationId: get_api_auth_me
       summary: Get current authenticated user
+      description: Returns the current user and mustChangePassword, including during first-login password reset.
       security:
       - sessionCookie: []
       responses:
@@ -128,15 +137,66 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/User'
-        '400':
-          description: Invalid input
         '401':
           description: Not authenticated
-        '403':
-          description: Insufficient permission
-        '404':
-          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
   /api/admin/users:
+    post:
+      tags:
+      - Administration
+      operationId: post_api_admin_users
+      summary: Create user with a generated temporary password
+      description: Allows administrators to create a user with a server-generated temporary password returned once and mustChangePassword set to true.
+      security:
+      - sessionCookie: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateUserRequest'
+      responses:
+        '201':
+          description: User created; temporaryPassword is returned once and user.mustChangePassword is true
+          headers:
+            Cache-Control:
+              description: Prevent storage of the response containing the temporary password.
+              schema:
+                type: string
+                enum:
+                - no-store
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CreateUserResponse'
+        '400':
+          description: Invalid input, including a caller-supplied password or unknown field
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Not authenticated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: Administrator permission required or PASSWORD_CHANGE_REQUIRED
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '409':
+          description: A user with this email already exists (case-insensitive)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
     get:
       tags:
       - Administration
@@ -147,7 +207,7 @@ paths:
       - sessionCookie: []
       responses:
         '200':
-          description: Success
+          description: Returns an empty array when no items match.
           content:
             application/json:
               schema:
@@ -156,12 +216,22 @@ paths:
                   $ref: '#/components/schemas/User'
         '400':
           description: Invalid input
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
         '401':
           description: Not authenticated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
         '403':
           description: Insufficient permission
-        '404':
-          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
   /api/admin/users/{userId}:
     get:
       tags:
@@ -170,12 +240,7 @@ paths:
       summary: Get user
       description: Administrator only.
       parameters:
-      - &id001
-        name: userId
-        in: path
-        required: true
-        schema:
-          type: string
+      - $ref: '#/components/parameters/userId'
       security:
       - sessionCookie: []
       responses:
@@ -187,12 +252,28 @@ paths:
                 $ref: '#/components/schemas/User'
         '400':
           description: Invalid input
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
         '401':
           description: Not authenticated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
         '403':
           description: Insufficient permission
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
         '404':
           description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
     patch:
       tags:
       - Administration
@@ -200,7 +281,7 @@ paths:
       summary: Update user or global administrator status
       description: Administrator only.
       parameters:
-      - *id001
+      - $ref: '#/components/parameters/userId'
       security:
       - sessionCookie: []
       requestBody:
@@ -223,12 +304,28 @@ paths:
                 $ref: '#/components/schemas/User'
         '400':
           description: Invalid input
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
         '401':
           description: Not authenticated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
         '403':
           description: Insufficient permission
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
         '404':
           description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
   /api/admin/courses:
     get:
       tags:
@@ -240,7 +337,7 @@ paths:
       - sessionCookie: []
       responses:
         '200':
-          description: Success
+          description: Returns an empty array when no items match.
           content:
             application/json:
               schema:
@@ -249,12 +346,22 @@ paths:
                   $ref: '#/components/schemas/Course'
         '400':
           description: Invalid input
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
         '401':
           description: Not authenticated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
         '403':
           description: Insufficient permission
-        '404':
-          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
     post:
       tags:
       - Administration
@@ -283,12 +390,28 @@ paths:
                 $ref: '#/components/schemas/Course'
         '400':
           description: Invalid input
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
         '401':
           description: Not authenticated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
         '403':
           description: Insufficient permission
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
         '404':
           description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
   /api/admin/courses/{courseId}:
     patch:
       tags:
@@ -297,12 +420,7 @@ paths:
       summary: Update course metadata
       description: Administrator only.
       parameters:
-      - &id002
-        name: courseId
-        in: path
-        required: true
-        schema:
-          type: string
+      - $ref: '#/components/parameters/courseId'
       security:
       - sessionCookie: []
       requestBody:
@@ -323,12 +441,28 @@ paths:
                 $ref: '#/components/schemas/Course'
         '400':
           description: Invalid input
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
         '401':
           description: Not authenticated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
         '403':
           description: Insufficient permission
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
         '404':
           description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
   /api/admin/courses/{courseId}/status:
     patch:
       tags:
@@ -337,7 +471,7 @@ paths:
       summary: Archive or reactivate course
       description: Administrator only.
       parameters:
-      - *id002
+      - $ref: '#/components/parameters/courseId'
       security:
       - sessionCookie: []
       requestBody:
@@ -363,12 +497,28 @@ paths:
                 $ref: '#/components/schemas/Course'
         '400':
           description: Invalid input
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
         '401':
           description: Not authenticated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
         '403':
           description: Insufficient permission
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
         '404':
           description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
   /api/admin/courses/{courseId}/enrollments:
     get:
       tags:
@@ -377,12 +527,12 @@ paths:
       summary: List course enrollments
       description: Administrator only.
       parameters:
-      - *id002
+      - $ref: '#/components/parameters/courseId'
       security:
       - sessionCookie: []
       responses:
         '200':
-          description: Success
+          description: Returns an empty array when no items match.
           content:
             application/json:
               schema:
@@ -391,12 +541,28 @@ paths:
                   $ref: '#/components/schemas/Enrollment'
         '400':
           description: Invalid input
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
         '401':
           description: Not authenticated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
         '403':
           description: Insufficient permission
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
         '404':
-          description: Not found
+          description: Course not found; an empty collection returns 200 with [].
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
     post:
       tags:
       - Administration
@@ -404,7 +570,7 @@ paths:
       summary: Enroll user with course role
       description: Administrator only.
       parameters:
-      - *id002
+      - $ref: '#/components/parameters/courseId'
       security:
       - sessionCookie: []
       requestBody:
@@ -433,12 +599,28 @@ paths:
                 $ref: '#/components/schemas/Enrollment'
         '400':
           description: Invalid input
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
         '401':
           description: Not authenticated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
         '403':
           description: Insufficient permission
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
         '404':
           description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
   /api/admin/courses/{courseId}/enrollments/{userId}:
     patch:
       tags:
@@ -447,8 +629,8 @@ paths:
       summary: Change course role
       description: Administrator only.
       parameters:
-      - *id002
-      - *id001
+      - $ref: '#/components/parameters/courseId'
+      - $ref: '#/components/parameters/userId'
       security:
       - sessionCookie: []
       requestBody:
@@ -474,12 +656,28 @@ paths:
                 $ref: '#/components/schemas/Enrollment'
         '400':
           description: Invalid input
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
         '401':
           description: Not authenticated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
         '403':
           description: Insufficient permission
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
         '404':
           description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
     delete:
       tags:
       - Administration
@@ -487,8 +685,8 @@ paths:
       summary: Remove course enrollment
       description: Administrator only.
       parameters:
-      - *id002
-      - *id001
+      - $ref: '#/components/parameters/courseId'
+      - $ref: '#/components/parameters/userId'
       security:
       - sessionCookie: []
       responses:
@@ -496,12 +694,28 @@ paths:
           description: Success
         '400':
           description: Invalid input
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
         '401':
           description: Not authenticated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
         '403':
           description: Insufficient permission
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
         '404':
           description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
   /api/courses:
     get:
       tags:
@@ -512,7 +726,7 @@ paths:
       - sessionCookie: []
       responses:
         '200':
-          description: Success
+          description: Returns an empty array when no items match.
           content:
             application/json:
               schema:
@@ -521,12 +735,22 @@ paths:
                   $ref: '#/components/schemas/Course'
         '400':
           description: Invalid input
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
         '401':
           description: Not authenticated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
         '403':
           description: Insufficient permission
-        '404':
-          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
   /api/courses/{courseId}:
     get:
       tags:
@@ -534,7 +758,7 @@ paths:
       operationId: get_api_courses_courseId
       summary: Get course and current membership
       parameters:
-      - *id002
+      - $ref: '#/components/parameters/courseId'
       security:
       - sessionCookie: []
       responses:
@@ -546,12 +770,28 @@ paths:
                 $ref: '#/components/schemas/Course'
         '400':
           description: Invalid input
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
         '401':
           description: Not authenticated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
         '403':
           description: Insufficient permission
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
         '404':
           description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
   /api/courses/{courseId}/dashboard:
     get:
       tags:
@@ -559,7 +799,7 @@ paths:
       operationId: get_api_courses_courseId_dashboard
       summary: Get course dashboard summary
       parameters:
-      - *id002
+      - $ref: '#/components/parameters/courseId'
       security:
       - sessionCookie: []
       responses:
@@ -571,12 +811,28 @@ paths:
                 $ref: '#/components/schemas/Dashboard'
         '400':
           description: Invalid input
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
         '401':
           description: Not authenticated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
         '403':
           description: Insufficient permission
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
         '404':
           description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
   /api/courses/{courseId}/announcements:
     get:
       tags:
@@ -584,7 +840,7 @@ paths:
       operationId: get_api_courses_courseId_announcements
       summary: List announcements
       parameters:
-      - *id002
+      - $ref: '#/components/parameters/courseId'
       - name: limit
         in: query
         required: false
@@ -601,7 +857,7 @@ paths:
       - sessionCookie: []
       responses:
         '200':
-          description: Success
+          description: Returns an empty array when no items match.
           content:
             application/json:
               schema:
@@ -610,19 +866,35 @@ paths:
                   $ref: '#/components/schemas/Announcement'
         '400':
           description: Invalid input
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
         '401':
           description: Not authenticated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
         '403':
           description: Insufficient permission
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
         '404':
-          description: Not found
+          description: Course not found; an empty collection returns 200 with [].
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
     post:
       tags:
       - Announcements
       operationId: post_api_courses_courseId_announcements
       summary: Publish announcement
       parameters:
-      - *id002
+      - $ref: '#/components/parameters/courseId'
       security:
       - sessionCookie: []
       requestBody:
@@ -648,12 +920,28 @@ paths:
                 $ref: '#/components/schemas/Announcement'
         '400':
           description: Invalid input
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
         '401':
           description: Not authenticated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
         '403':
           description: Insufficient permission
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
         '404':
           description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
   /api/courses/{courseId}/announcements/{announcementId}:
     get:
       tags:
@@ -661,13 +949,8 @@ paths:
       operationId: get_api_courses_courseId_announcements_announcementId
       summary: Get announcement
       parameters:
-      - *id002
-      - &id003
-        name: announcementId
-        in: path
-        required: true
-        schema:
-          type: string
+      - $ref: '#/components/parameters/courseId'
+      - $ref: '#/components/parameters/announcementId'
       security:
       - sessionCookie: []
       responses:
@@ -679,20 +962,36 @@ paths:
                 $ref: '#/components/schemas/Announcement'
         '400':
           description: Invalid input
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
         '401':
           description: Not authenticated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
         '403':
           description: Insufficient permission
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
         '404':
           description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
     patch:
       tags:
       - Announcements
       operationId: patch_api_courses_courseId_announcements_announcementId
       summary: Edit announcement
       parameters:
-      - *id002
-      - *id003
+      - $ref: '#/components/parameters/courseId'
+      - $ref: '#/components/parameters/announcementId'
       security:
       - sessionCookie: []
       requestBody:
@@ -715,20 +1014,36 @@ paths:
                 $ref: '#/components/schemas/Announcement'
         '400':
           description: Invalid input
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
         '401':
           description: Not authenticated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
         '403':
           description: Insufficient permission
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
         '404':
           description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
     delete:
       tags:
       - Announcements
       operationId: delete_api_courses_courseId_announcements_announcementId
       summary: Delete announcement
       parameters:
-      - *id002
-      - *id003
+      - $ref: '#/components/parameters/courseId'
+      - $ref: '#/components/parameters/announcementId'
       security:
       - sessionCookie: []
       responses:
@@ -736,12 +1051,28 @@ paths:
           description: Success
         '400':
           description: Invalid input
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
         '401':
           description: Not authenticated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
         '403':
           description: Insufficient permission
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
         '404':
           description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
   /api/courses/{courseId}/assignments:
     get:
       tags:
@@ -749,12 +1080,12 @@ paths:
       operationId: get_api_courses_courseId_assignments
       summary: List assignments
       parameters:
-      - *id002
+      - $ref: '#/components/parameters/courseId'
       security:
       - sessionCookie: []
       responses:
         '200':
-          description: Success
+          description: Returns an empty array when no items match.
           content:
             application/json:
               schema:
@@ -763,19 +1094,35 @@ paths:
                   $ref: '#/components/schemas/Assignment'
         '400':
           description: Invalid input
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
         '401':
           description: Not authenticated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
         '403':
           description: Insufficient permission
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
         '404':
-          description: Not found
+          description: Course not found; an empty collection returns 200 with [].
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
     post:
       tags:
       - Assignments
       operationId: post_api_courses_courseId_assignments
       summary: Create assignment
       parameters:
-      - *id002
+      - $ref: '#/components/parameters/courseId'
       security:
       - sessionCookie: []
       requestBody:
@@ -803,12 +1150,28 @@ paths:
                 $ref: '#/components/schemas/Assignment'
         '400':
           description: Invalid input
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
         '401':
           description: Not authenticated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
         '403':
           description: Insufficient permission
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
         '404':
           description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
   /api/courses/{courseId}/assignments/{assignmentId}:
     get:
       tags:
@@ -816,13 +1179,8 @@ paths:
       operationId: get_api_courses_courseId_assignments_assignmentId
       summary: Get assignment
       parameters:
-      - *id002
-      - &id004
-        name: assignmentId
-        in: path
-        required: true
-        schema:
-          type: string
+      - $ref: '#/components/parameters/courseId'
+      - $ref: '#/components/parameters/assignmentId'
       security:
       - sessionCookie: []
       responses:
@@ -834,20 +1192,36 @@ paths:
                 $ref: '#/components/schemas/Assignment'
         '400':
           description: Invalid input
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
         '401':
           description: Not authenticated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
         '403':
           description: Insufficient permission
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
         '404':
           description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
     patch:
       tags:
       - Assignments
       operationId: patch_api_courses_courseId_assignments_assignmentId
       summary: Update assignment
       parameters:
-      - *id002
-      - *id004
+      - $ref: '#/components/parameters/courseId'
+      - $ref: '#/components/parameters/assignmentId'
       security:
       - sessionCookie: []
       requestBody:
@@ -873,20 +1247,36 @@ paths:
                 $ref: '#/components/schemas/Assignment'
         '400':
           description: Invalid input
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
         '401':
           description: Not authenticated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
         '403':
           description: Insufficient permission
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
         '404':
           description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
     delete:
       tags:
       - Assignments
       operationId: delete_api_courses_courseId_assignments_assignmentId
       summary: Delete assignment
       parameters:
-      - *id002
-      - *id004
+      - $ref: '#/components/parameters/courseId'
+      - $ref: '#/components/parameters/assignmentId'
       security:
       - sessionCookie: []
       responses:
@@ -894,12 +1284,28 @@ paths:
           description: Success
         '400':
           description: Invalid input
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
         '401':
           description: Not authenticated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
         '403':
           description: Insufficient permission
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
         '404':
           description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
   /api/courses/{courseId}/assignments/{assignmentId}/submissions:
     post:
       tags:
@@ -908,8 +1314,8 @@ paths:
       summary: Upload assignment submission
       description: ' Optional scope: implement only if assignment file submissions are included.'
       parameters:
-      - *id002
-      - *id004
+      - $ref: '#/components/parameters/courseId'
+      - $ref: '#/components/parameters/assignmentId'
       security:
       - sessionCookie: []
       requestBody:
@@ -938,12 +1344,28 @@ paths:
                     type: string
         '400':
           description: Invalid input
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
         '401':
           description: Not authenticated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
         '403':
           description: Insufficient permission
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
         '404':
           description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
     get:
       tags:
       - Assignments
@@ -951,13 +1373,13 @@ paths:
       summary: List assignment submissions
       description: ' Optional scope: implement only if assignment file submissions are included.'
       parameters:
-      - *id002
-      - *id004
+      - $ref: '#/components/parameters/courseId'
+      - $ref: '#/components/parameters/assignmentId'
       security:
       - sessionCookie: []
       responses:
         '200':
-          description: Success
+          description: Returns an empty array when no items match.
           content:
             application/json:
               schema:
@@ -973,12 +1395,28 @@ paths:
                       type: string
         '400':
           description: Invalid input
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
         '401':
           description: Not authenticated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
         '403':
           description: Insufficient permission
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
         '404':
-          description: Not found
+          description: Assignment not found; an empty collection returns 200 with [].
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
   /api/courses/{courseId}/assignments/{assignmentId}/submissions/me:
     get:
       tags:
@@ -987,8 +1425,8 @@ paths:
       summary: Get own assignment submission
       description: ' Optional scope: implement only if assignment file submissions are included.'
       parameters:
-      - *id002
-      - *id004
+      - $ref: '#/components/parameters/courseId'
+      - $ref: '#/components/parameters/assignmentId'
       security:
       - sessionCookie: []
       responses:
@@ -1005,12 +1443,28 @@ paths:
                     type: string
         '400':
           description: Invalid input
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
         '401':
           description: Not authenticated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
         '403':
           description: Insufficient permission
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
         '404':
           description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
   /api/courses/{courseId}/assignments/{assignmentId}/submissions/{submissionId}/download:
     get:
       tags:
@@ -1019,14 +1473,9 @@ paths:
       summary: Get assignment submission download URL
       description: ' Optional scope: implement only if assignment file submissions are included.'
       parameters:
-      - *id002
-      - *id004
-      - &id007
-        name: submissionId
-        in: path
-        required: true
-        schema:
-          type: string
+      - $ref: '#/components/parameters/courseId'
+      - $ref: '#/components/parameters/assignmentId'
+      - $ref: '#/components/parameters/submissionId'
       security:
       - sessionCookie: []
       responses:
@@ -1038,12 +1487,28 @@ paths:
                 $ref: '#/components/schemas/PresignedUrl'
         '400':
           description: Invalid input
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
         '401':
           description: Not authenticated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
         '403':
           description: Insufficient permission
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
         '404':
           description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
   /api/courses/{courseId}/quizzes:
     get:
       tags:
@@ -1051,12 +1516,12 @@ paths:
       operationId: get_api_courses_courseId_quizzes
       summary: List quizzes
       parameters:
-      - *id002
+      - $ref: '#/components/parameters/courseId'
       security:
       - sessionCookie: []
       responses:
         '200':
-          description: Success
+          description: Returns an empty array when no items match.
           content:
             application/json:
               schema:
@@ -1065,12 +1530,28 @@ paths:
                   $ref: '#/components/schemas/Quiz'
         '400':
           description: Invalid input
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
         '401':
           description: Not authenticated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
         '403':
           description: Insufficient permission
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
         '404':
-          description: Not found
+          description: Course not found; an empty collection returns 200 with [].
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
     post:
       tags:
       - Quizzes
@@ -1079,7 +1560,7 @@ paths:
       description: Instructor-only for mutations and statistics; never expose correct answers to students before
         results are released.
       parameters:
-      - *id002
+      - $ref: '#/components/parameters/courseId'
       security:
       - sessionCookie: []
       requestBody:
@@ -1107,12 +1588,28 @@ paths:
                 $ref: '#/components/schemas/Quiz'
         '400':
           description: Invalid input
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
         '401':
           description: Not authenticated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
         '403':
           description: Insufficient permission
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
         '404':
           description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
   /api/courses/{courseId}/quizzes/{quizId}:
     get:
       tags:
@@ -1120,13 +1617,8 @@ paths:
       operationId: get_api_courses_courseId_quizzes_quizId
       summary: Get quiz with permitted question data
       parameters:
-      - *id002
-      - &id005
-        name: quizId
-        in: path
-        required: true
-        schema:
-          type: string
+      - $ref: '#/components/parameters/courseId'
+      - $ref: '#/components/parameters/quizId'
       security:
       - sessionCookie: []
       responses:
@@ -1138,12 +1630,28 @@ paths:
                 $ref: '#/components/schemas/Quiz'
         '400':
           description: Invalid input
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
         '401':
           description: Not authenticated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
         '403':
           description: Insufficient permission
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
         '404':
           description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
     patch:
       tags:
       - Quizzes
@@ -1152,8 +1660,8 @@ paths:
       description: Instructor-only for mutations and statistics; never expose correct answers to students before
         results are released.
       parameters:
-      - *id002
-      - *id005
+      - $ref: '#/components/parameters/courseId'
+      - $ref: '#/components/parameters/quizId'
       security:
       - sessionCookie: []
       requestBody:
@@ -1185,12 +1693,28 @@ paths:
                 $ref: '#/components/schemas/Quiz'
         '400':
           description: Invalid input
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
         '401':
           description: Not authenticated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
         '403':
           description: Insufficient permission
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
         '404':
           description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
     delete:
       tags:
       - Quizzes
@@ -1199,8 +1723,8 @@ paths:
       description: Instructor-only for mutations and statistics; never expose correct answers to students before
         results are released.
       parameters:
-      - *id002
-      - *id005
+      - $ref: '#/components/parameters/courseId'
+      - $ref: '#/components/parameters/quizId'
       security:
       - sessionCookie: []
       responses:
@@ -1208,12 +1732,28 @@ paths:
           description: Success
         '400':
           description: Invalid input
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
         '401':
           description: Not authenticated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
         '403':
           description: Insufficient permission
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
         '404':
           description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
   /api/courses/{courseId}/quizzes/{quizId}/questions:
     post:
       tags:
@@ -1223,8 +1763,8 @@ paths:
       description: Instructor-only for mutations and statistics; never expose correct answers to students before
         results are released.
       parameters:
-      - *id002
-      - *id005
+      - $ref: '#/components/parameters/courseId'
+      - $ref: '#/components/parameters/quizId'
       security:
       - sessionCookie: []
       requestBody:
@@ -1257,12 +1797,28 @@ paths:
                 $ref: '#/components/schemas/Question'
         '400':
           description: Invalid input
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
         '401':
           description: Not authenticated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
         '403':
           description: Insufficient permission
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
         '404':
           description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
   /api/courses/{courseId}/quizzes/{quizId}/questions/{questionId}:
     patch:
       tags:
@@ -1272,14 +1828,9 @@ paths:
       description: Instructor-only for mutations and statistics; never expose correct answers to students before
         results are released.
       parameters:
-      - *id002
-      - *id005
-      - &id006
-        name: questionId
-        in: path
-        required: true
-        schema:
-          type: string
+      - $ref: '#/components/parameters/courseId'
+      - $ref: '#/components/parameters/quizId'
+      - $ref: '#/components/parameters/questionId'
       security:
       - sessionCookie: []
       requestBody:
@@ -1307,12 +1858,28 @@ paths:
                 $ref: '#/components/schemas/Question'
         '400':
           description: Invalid input
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
         '401':
           description: Not authenticated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
         '403':
           description: Insufficient permission
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
         '404':
           description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
     delete:
       tags:
       - Quizzes
@@ -1321,9 +1888,9 @@ paths:
       description: Instructor-only for mutations and statistics; never expose correct answers to students before
         results are released.
       parameters:
-      - *id002
-      - *id005
-      - *id006
+      - $ref: '#/components/parameters/courseId'
+      - $ref: '#/components/parameters/quizId'
+      - $ref: '#/components/parameters/questionId'
       security:
       - sessionCookie: []
       responses:
@@ -1331,12 +1898,28 @@ paths:
           description: Success
         '400':
           description: Invalid input
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
         '401':
           description: Not authenticated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
         '403':
           description: Insufficient permission
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
         '404':
           description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
   /api/courses/{courseId}/quizzes/{quizId}/statistics:
     get:
       tags:
@@ -1346,8 +1929,8 @@ paths:
       description: Instructor-only for mutations and statistics; never expose correct answers to students before
         results are released.
       parameters:
-      - *id002
-      - *id005
+      - $ref: '#/components/parameters/courseId'
+      - $ref: '#/components/parameters/quizId'
       security:
       - sessionCookie: []
       responses:
@@ -1359,12 +1942,28 @@ paths:
                 $ref: '#/components/schemas/QuizStatistics'
         '400':
           description: Invalid input
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
         '401':
           description: Not authenticated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
         '403':
           description: Insufficient permission
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
         '404':
           description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
   /api/courses/{courseId}/quizzes/{quizId}/submissions:
     post:
       tags:
@@ -1372,8 +1971,8 @@ paths:
       operationId: post_api_courses_courseId_quizzes_quizId_submissions
       summary: Start quiz draft
       parameters:
-      - *id002
-      - *id005
+      - $ref: '#/components/parameters/courseId'
+      - $ref: '#/components/parameters/quizId'
       security:
       - sessionCookie: []
       requestBody:
@@ -1392,25 +1991,41 @@ paths:
                 $ref: '#/components/schemas/Submission'
         '400':
           description: Invalid input
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
         '401':
           description: Not authenticated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
         '403':
           description: Insufficient permission
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
         '404':
           description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
     get:
       tags:
       - Quiz Submissions
       operationId: get_api_courses_courseId_quizzes_quizId_submissions
       summary: List quiz submissions for instructor
       parameters:
-      - *id002
-      - *id005
+      - $ref: '#/components/parameters/courseId'
+      - $ref: '#/components/parameters/quizId'
       security:
       - sessionCookie: []
       responses:
         '200':
-          description: Success
+          description: Returns an empty array when no items match.
           content:
             application/json:
               schema:
@@ -1419,12 +2034,28 @@ paths:
                   $ref: '#/components/schemas/Submission'
         '400':
           description: Invalid input
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
         '401':
           description: Not authenticated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
         '403':
           description: Insufficient permission
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
         '404':
-          description: Not found
+          description: Quiz not found; an empty collection returns 200 with [].
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
   /api/courses/{courseId}/quizzes/{quizId}/submissions/me:
     get:
       tags:
@@ -1432,8 +2063,8 @@ paths:
       operationId: get_api_courses_courseId_quizzes_quizId_submissions_me
       summary: Get own draft or attempt
       parameters:
-      - *id002
-      - *id005
+      - $ref: '#/components/parameters/courseId'
+      - $ref: '#/components/parameters/quizId'
       security:
       - sessionCookie: []
       responses:
@@ -1445,12 +2076,28 @@ paths:
                 $ref: '#/components/schemas/Submission'
         '400':
           description: Invalid input
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
         '401':
           description: Not authenticated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
         '403':
           description: Insufficient permission
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
         '404':
           description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
   /api/courses/{courseId}/quizzes/{quizId}/submissions/{submissionId}:
     patch:
       tags:
@@ -1458,9 +2105,9 @@ paths:
       operationId: patch_api_courses_courseId_quizzes_quizId_submissions_submissionId
       summary: Save draft answers
       parameters:
-      - *id002
-      - *id005
-      - *id007
+      - $ref: '#/components/parameters/courseId'
+      - $ref: '#/components/parameters/quizId'
+      - $ref: '#/components/parameters/submissionId'
       security:
       - sessionCookie: []
       requestBody:
@@ -1492,12 +2139,28 @@ paths:
                 $ref: '#/components/schemas/Submission'
         '400':
           description: Invalid input
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
         '401':
           description: Not authenticated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
         '403':
           description: Insufficient permission
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
         '404':
           description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
   /api/courses/{courseId}/quizzes/{quizId}/submissions/{submissionId}/submit:
     post:
       tags:
@@ -1505,9 +2168,9 @@ paths:
       operationId: post_api_courses_courseId_quizzes_quizId_submissions_submissionId_submit
       summary: Finalize quiz submission
       parameters:
-      - *id002
-      - *id005
-      - *id007
+      - $ref: '#/components/parameters/courseId'
+      - $ref: '#/components/parameters/quizId'
+      - $ref: '#/components/parameters/submissionId'
       security:
       - sessionCookie: []
       requestBody:
@@ -1526,12 +2189,28 @@ paths:
                 $ref: '#/components/schemas/Submission'
         '400':
           description: Invalid input
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
         '401':
           description: Not authenticated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
         '403':
           description: Insufficient permission
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
         '404':
           description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
   /api/courses/{courseId}/quizzes/{quizId}/submissions/{submissionId}/result:
     get:
       tags:
@@ -1539,9 +2218,9 @@ paths:
       operationId: get_api_courses_courseId_quizzes_quizId_submissions_submissionId_result
       summary: View authorized submission result
       parameters:
-      - *id002
-      - *id005
-      - *id007
+      - $ref: '#/components/parameters/courseId'
+      - $ref: '#/components/parameters/quizId'
+      - $ref: '#/components/parameters/submissionId'
       security:
       - sessionCookie: []
       responses:
@@ -1553,12 +2232,28 @@ paths:
                 $ref: '#/components/schemas/Submission'
         '400':
           description: Invalid input
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
         '401':
           description: Not authenticated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
         '403':
           description: Insufficient permission
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
         '404':
           description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
   /api/courses/{courseId}/quizzes/{quizId}/submissions/{submissionId}/grade:
     patch:
       tags:
@@ -1566,9 +2261,9 @@ paths:
       operationId: patch_api_courses_courseId_quizzes_quizId_submissions_submissionId_grade
       summary: Grade submission
       parameters:
-      - *id002
-      - *id005
-      - *id007
+      - $ref: '#/components/parameters/courseId'
+      - $ref: '#/components/parameters/quizId'
+      - $ref: '#/components/parameters/submissionId'
       security:
       - sessionCookie: []
       requestBody:
@@ -1593,12 +2288,28 @@ paths:
                 $ref: '#/components/schemas/Submission'
         '400':
           description: Invalid input
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
         '401':
           description: Not authenticated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
         '403':
           description: Insufficient permission
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
         '404':
           description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
   /api/courses/{courseId}/resources:
     get:
       tags:
@@ -1606,7 +2317,7 @@ paths:
       operationId: get_api_courses_courseId_resources
       summary: List course resources
       parameters:
-      - *id002
+      - $ref: '#/components/parameters/courseId'
       - name: limit
         in: query
         required: false
@@ -1626,7 +2337,7 @@ paths:
       - sessionCookie: []
       responses:
         '200':
-          description: Success
+          description: Returns an empty array when no items match.
           content:
             application/json:
               schema:
@@ -1635,19 +2346,35 @@ paths:
                   $ref: '#/components/schemas/Resource'
         '400':
           description: Invalid input
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
         '401':
           description: Not authenticated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
         '403':
           description: Insufficient permission
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
         '404':
-          description: Not found
+          description: Course not found; an empty collection returns 200 with [].
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
     post:
       tags:
       - Resources
       operationId: post_api_courses_courseId_resources
       summary: Upload PDF resource
       parameters:
-      - *id002
+      - $ref: '#/components/parameters/courseId'
       security:
       - sessionCookie: []
       requestBody:
@@ -1685,12 +2412,28 @@ paths:
                 $ref: '#/components/schemas/Resource'
         '400':
           description: Invalid input
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
         '401':
           description: Not authenticated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
         '403':
           description: Insufficient permission
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
         '404':
           description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
   /api/courses/{courseId}/resources/search:
     get:
       tags:
@@ -1698,7 +2441,7 @@ paths:
       operationId: get_api_courses_courseId_resources_search
       summary: Search PDF contents in course
       parameters:
-      - *id002
+      - $ref: '#/components/parameters/courseId'
       - name: q
         in: query
         required: true
@@ -1709,7 +2452,7 @@ paths:
       - sessionCookie: []
       responses:
         '200':
-          description: Success
+          description: Returns an empty array when no items match.
           content:
             application/json:
               schema:
@@ -1718,12 +2461,28 @@ paths:
                   $ref: '#/components/schemas/SearchResult'
         '400':
           description: Invalid input
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
         '401':
           description: Not authenticated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
         '403':
           description: Insufficient permission
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
         '404':
-          description: Not found
+          description: Course not found; an empty collection returns 200 with [].
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
   /api/courses/{courseId}/resources/{resourceId}:
     get:
       tags:
@@ -1731,13 +2490,8 @@ paths:
       operationId: get_api_courses_courseId_resources_resourceId
       summary: Get resource and extraction status
       parameters:
-      - *id002
-      - &id008
-        name: resourceId
-        in: path
-        required: true
-        schema:
-          type: string
+      - $ref: '#/components/parameters/courseId'
+      - $ref: '#/components/parameters/resourceId'
       security:
       - sessionCookie: []
       responses:
@@ -1749,20 +2503,36 @@ paths:
                 $ref: '#/components/schemas/Resource'
         '400':
           description: Invalid input
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
         '401':
           description: Not authenticated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
         '403':
           description: Insufficient permission
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
         '404':
           description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
     patch:
       tags:
       - Resources
       operationId: patch_api_courses_courseId_resources_resourceId
       summary: Update resource metadata or visibility
       parameters:
-      - *id002
-      - *id008
+      - $ref: '#/components/parameters/courseId'
+      - $ref: '#/components/parameters/resourceId'
       security:
       - sessionCookie: []
       requestBody:
@@ -1790,20 +2560,36 @@ paths:
                 $ref: '#/components/schemas/Resource'
         '400':
           description: Invalid input
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
         '401':
           description: Not authenticated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
         '403':
           description: Insufficient permission
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
         '404':
           description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
     delete:
       tags:
       - Resources
       operationId: delete_api_courses_courseId_resources_resourceId
       summary: Delete resource
       parameters:
-      - *id002
-      - *id008
+      - $ref: '#/components/parameters/courseId'
+      - $ref: '#/components/parameters/resourceId'
       security:
       - sessionCookie: []
       responses:
@@ -1811,12 +2597,28 @@ paths:
           description: Success
         '400':
           description: Invalid input
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
         '401':
           description: Not authenticated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
         '403':
           description: Insufficient permission
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
         '404':
           description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
   /api/courses/{courseId}/resources/{resourceId}/preview:
     get:
       tags:
@@ -1824,8 +2626,8 @@ paths:
       operationId: get_api_courses_courseId_resources_resourceId_preview
       summary: Get S3 preview presigned URL
       parameters:
-      - *id002
-      - *id008
+      - $ref: '#/components/parameters/courseId'
+      - $ref: '#/components/parameters/resourceId'
       security:
       - sessionCookie: []
       responses:
@@ -1837,12 +2639,28 @@ paths:
                 $ref: '#/components/schemas/PresignedUrl'
         '400':
           description: Invalid input
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
         '401':
           description: Not authenticated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
         '403':
           description: Insufficient permission
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
         '404':
           description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
   /api/courses/{courseId}/resources/{resourceId}/download:
     get:
       tags:
@@ -1850,8 +2668,8 @@ paths:
       operationId: get_api_courses_courseId_resources_resourceId_download
       summary: Get S3 download presigned URL
       parameters:
-      - *id002
-      - *id008
+      - $ref: '#/components/parameters/courseId'
+      - $ref: '#/components/parameters/resourceId'
       security:
       - sessionCookie: []
       responses:
@@ -1863,13 +2681,78 @@ paths:
                 $ref: '#/components/schemas/PresignedUrl'
         '400':
           description: Invalid input
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
         '401':
           description: Not authenticated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
         '403':
           description: Insufficient permission
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
         '404':
           description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
 components:
+  parameters:
+    userId:
+      name: userId
+      in: path
+      required: true
+      schema:
+        type: string
+    courseId:
+      name: courseId
+      in: path
+      required: true
+      schema:
+        type: string
+    announcementId:
+      name: announcementId
+      in: path
+      required: true
+      schema:
+        type: string
+    assignmentId:
+      name: assignmentId
+      in: path
+      required: true
+      schema:
+        type: string
+    submissionId:
+      name: submissionId
+      in: path
+      required: true
+      schema:
+        type: string
+    quizId:
+      name: quizId
+      in: path
+      required: true
+      schema:
+        type: string
+    questionId:
+      name: questionId
+      in: path
+      required: true
+      schema:
+        type: string
+    resourceId:
+      name: resourceId
+      in: path
+      required: true
+      schema:
+        type: string
   securitySchemes:
     sessionCookie:
       type: apiKey
@@ -1900,10 +2783,66 @@ components:
           format: email
         isAdmin:
           type: boolean
+        mustChangePassword:
+          type: boolean
+          readOnly: true
+          description: True until the user replaces the administrator-generated temporary password.
       required:
       - id
       - email
       - isAdmin
+      - mustChangePassword
+    CreateUserRequest:
+      type: object
+      additionalProperties: false
+      properties:
+        name:
+          type: string
+          minLength: 1
+        email:
+          type: string
+          format: email
+        isAdmin:
+          type: boolean
+          default: false
+          description: Global administrator status; student and instructor roles are assigned per course.
+      required:
+      - name
+      - email
+    CreateUserResponse:
+      type: object
+      additionalProperties: false
+      properties:
+        user:
+          $ref: '#/components/schemas/User'
+        temporaryPassword:
+          type: string
+          format: password
+          minLength: 16
+          readOnly: true
+          description: Server-generated random password, exposed only in the administrator's creation response.
+      required:
+      - user
+      - temporaryPassword
+    ChangePasswordRequest:
+      type: object
+      additionalProperties: false
+      properties:
+        currentPassword:
+          type: string
+          format: password
+          writeOnly: true
+          description: Temporary password on first login; current password for subsequent changes.
+        newPassword:
+          type: string
+          format: password
+          minLength: 12
+          maxLength: 128
+          writeOnly: true
+          description: Must be 12 to 128 characters and differ from the current password.
+      required:
+      - currentPassword
+      - newPassword
     Course:
       type: object
       properties:
