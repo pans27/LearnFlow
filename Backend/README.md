@@ -6,7 +6,8 @@ The layout follows the server, router, middleware, and database separation in `a
 
 ## Local setup
 
-Use Node.js 22.12 or newer. From `Backend`:
+Use Node.js 24 (also specified in `.nvmrc` and `package.json`). Dependency version
+ranges match the corresponding packages in `a2`. From `Backend`:
 
 ```powershell
 npm install
