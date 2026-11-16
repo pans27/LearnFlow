@@ -46,3 +46,4 @@ In **Resources**, students can share PDF or Word notes and instructors can uploa
 - [.env.example](.env.example) lists the Vite settings. The HTTP client and [API contract notes](API-CONTRACT.md) are starting points for integration. Confirm the endpoint paths and payloads against the team's OpenAPI specification before setting `VITE_USE_MOCK=false`. Keep real credentials out of Vite variables.
 
 The team repository uses `Frontend/` for this application. Review any existing files in that folder before integrating this version on a feature branch.
+
