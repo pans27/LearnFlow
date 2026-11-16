@@ -12,7 +12,7 @@ datasource db {
 // indexing live in the SQL migration. Preserve them in subsequent migrations.
 // Store account details and administrator flags.
 model User {
-  id                 BigInt   @id @default(autoincrement()) @map("user_id")
+  id                 Int   @id @default(autoincrement()) @map("user_id")
   email              String
   passwordHash       String   @map("password_hash")
   name               String   @map("display_name")
@@ -37,7 +37,7 @@ model User {
 
 // Store course metadata and archive status.
 model Course {
-  id            BigInt   @id @default(autoincrement()) @map("course_id")
+  id            Int   @id @default(autoincrement()) @map("course_id")
   courseCode    String   @map("course_code")
   name          String   @map("title")
   description   String?
@@ -62,8 +62,8 @@ model Course {
 
 // Assign a user a role within one course.
 model Enrollment {
-  courseId   BigInt   @map("course_id")
-  userId     BigInt   @map("user_id")
+  courseId   Int   @map("course_id")
+  userId     Int   @map("user_id")
   role       String
   enrolledAt DateTime @default(now()) @map("enrolled_at") @db.Timestamptz
   course     Course   @relation(fields: [courseId], references: [id], onDelete: Cascade, onUpdate: NoAction)
@@ -80,7 +80,7 @@ model Enrollment {
 // Store persistent session data and expiration times.
 model Session {
   id          String   @id @map("session_id")
-  userId      BigInt   @map("user_id")
+  userId      Int   @map("user_id")
   sessionData Json     @default("{}") @map("session_data")
   expiresAt   DateTime @map("expires_at") @db.Timestamptz
   createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz
@@ -94,9 +94,9 @@ model Session {
 
 // Store course announcements and their visibility.
 model Announcement {
-  id        BigInt   @id @default(autoincrement()) @map("announcement_id")
-  courseId  BigInt   @map("course_id")
-  authorId  BigInt   @map("author_id")
+  id        Int   @id @default(autoincrement()) @map("announcement_id")
+  courseId  Int   @map("course_id")
+  authorId  Int   @map("author_id")
   title     String
   body      String
   isVisible Boolean  @default(true) @map("is_visible")
@@ -112,9 +112,9 @@ model Announcement {
 
 // Store assignment details and due dates.
 model Assignment {
-  id          BigInt   @id @default(autoincrement()) @map("assignment_id")
-  courseId    BigInt   @map("course_id")
-  createdBy   BigInt   @map("created_by")
+  id          Int   @id @default(autoincrement()) @map("assignment_id")
+  courseId    Int   @map("course_id")
+  createdBy   Int   @map("created_by")
   title       String
   description String?
   dueAt       DateTime? @map("due_at") @db.Timestamptz
@@ -133,9 +133,9 @@ model Assignment {
 
 // Store quiz settings and availability dates.
 model Quiz {
-  id          BigInt   @id @default(autoincrement()) @map("quiz_id")
-  courseId    BigInt   @map("course_id")
-  createdBy   BigInt   @map("created_by")
+  id          Int   @id @default(autoincrement()) @map("quiz_id")
+  courseId    Int   @map("course_id")
+  createdBy   Int   @map("created_by")
   title       String
   description String?
   opensAt     DateTime? @map("opens_at") @db.Timestamptz
@@ -159,9 +159,9 @@ model Quiz {
 
 // Store ordered questions and private answer keys for a quiz.
 model QuizQuestion {
-  id           BigInt  @id @default(autoincrement()) @map("question_id")
-  courseId     BigInt  @map("course_id")
-  quizId       BigInt  @map("quiz_id")
+  id           Int  @id @default(autoincrement()) @map("question_id")
+  courseId     Int  @map("course_id")
+  quizId       Int  @map("quiz_id")
   position     Int
   questionType String  @map("question_type")
   prompt       String
@@ -178,17 +178,17 @@ model QuizQuestion {
 
 // Store quiz attempts, answers, and grading results.
 model Submission {
-  id            BigInt   @id @default(autoincrement()) @map("submission_id")
-  courseId      BigInt   @map("course_id")
-  quizId        BigInt   @map("quiz_id")
-  studentId     BigInt   @map("student_id")
+  id            Int   @id @default(autoincrement()) @map("submission_id")
+  courseId      Int   @map("course_id")
+  quizId        Int   @map("quiz_id")
+  studentId     Int   @map("student_id")
   attemptNumber Int      @default(1) @map("attempt_number")
   status        String   @default("draft")
   draftAnswers  Json     @default("{}") @map("draft_answers")
   s3Key         String?  @map("s3_key")
   feedback      String?
   score         Decimal? @db.Decimal(10, 2)
-  gradedBy      BigInt?  @map("graded_by")
+  gradedBy      Int?  @map("graded_by")
   gradedAt      DateTime? @map("graded_at") @db.Timestamptz
   createdAt     DateTime @default(now()) @map("created_at") @db.Timestamptz
   updatedAt     DateTime @default(now()) @map("updated_at") @db.Timestamptz
@@ -209,9 +209,9 @@ model Submission {
 // and writing extracted pages. APIs must still authorize each course/resource.
 // Store file metadata and extraction status for a course resource.
 model LearningResource {
-  id               BigInt   @id @default(autoincrement()) @map("resource_id")
-  courseId         BigInt   @map("course_id")
-  ownerId          BigInt   @map("owner_id")
+  id               Int   @id @default(autoincrement()) @map("resource_id")
+  courseId         Int   @map("course_id")
+  ownerId          Int   @map("owner_id")
   resourceType     String   @map("resource_type")
   title            String
   description      String?
@@ -239,8 +239,8 @@ model LearningResource {
 
 // Store extracted page text and its generated search vector.
 model ResourcePage {
-  courseId      BigInt @map("course_id")
-  resourceId    BigInt @map("resource_id")
+  courseId      Int @map("course_id")
+  resourceId    Int @map("resource_id")
   pageNumber    Int    @map("page_number")
   extractedText String @default("") @map("extracted_text")
   searchVector  Unsupported("tsvector")? @default(dbgenerated("to_tsvector('english'::regconfig, extracted_text)")) @map("search_vector")
@@ -255,10 +255,10 @@ model ResourcePage {
 
 // Store a student file submission for an assignment.
 model AssignmentSubmission {
-  id               BigInt @id @default(autoincrement()) @map("submission_id")
-  courseId         BigInt @map("course_id")
-  assignmentId     BigInt @map("assignment_id")
-  studentId        BigInt @map("student_id")
+  id               Int @id @default(autoincrement()) @map("submission_id")
+  courseId         Int @map("course_id")
+  assignmentId     Int @map("assignment_id")
+  studentId        Int @map("student_id")
   s3Key            String @map("s3_key")
   originalFilename String @map("original_filename")
   submittedAt      DateTime @default(now()) @map("submitted_at") @db.Timestamptz
@@ -273,9 +273,9 @@ model AssignmentSubmission {
 
 // Track PDF extraction jobs and retry attempts.
 model ExtractionJob {
-  id          BigInt @id @default(autoincrement()) @map("job_id")
-  courseId    BigInt @map("course_id")
-  resourceId  BigInt @map("resource_id")
+  id          Int @id @default(autoincrement()) @map("job_id")
+  courseId    Int @map("course_id")
+  resourceId  Int @map("resource_id")
   status      String @default("pending")
   attempts    Int @default(0)
   maxAttempts Int @default(3) @map("max_attempts")
