@@ -1,0 +1,11 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// TODO: Add LearnFlow models after selecting the schema strategy documented
+// in the repository-root SQL files. No domain tables or migrations yet.
