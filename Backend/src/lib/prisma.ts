@@ -19,6 +19,7 @@ export function getPrisma(): PrismaClient {
   return prisma;
 }
 
+// Disconnect the shared Prisma client and clear its cached instance.
 export async function disconnectPrisma(): Promise<void> {
   if (prisma) {
     await prisma.$disconnect();

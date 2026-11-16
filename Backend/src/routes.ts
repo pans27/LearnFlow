@@ -1,4 +1,5 @@
 import { Router } from 'express';
+import adminRoutes from './routes/admin';
 
 const router = Router();
 
@@ -7,7 +8,10 @@ router.get('/health', (_req, res) => {
   res.json({ status: 'ok' });
 });
 
-// TODO: Mount feature routers from ./routes as they are implemented.
+router.use('/admin', adminRoutes);
+
+// TODO: Add course-member routes for announcements, quizzes, submissions, search.
+// TODO(file owner): integrate authorized storage/extraction operations.
 // See ../../learnflow-openapi.yaml for the proposed endpoint contract.
 // Add authentication and course authorization before exposing protected routes.
 
