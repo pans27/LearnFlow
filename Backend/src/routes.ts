@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import adminRoutes from './routes/admin';
+import courseRoutes from './routes/courses';
 import type { HealthResponse } from './types';
 
 const router = Router();
@@ -10,6 +11,7 @@ router.get<{}, HealthResponse>('/health', (_req, res) => {
 });
 
 router.use('/admin', adminRoutes);
+router.use('/courses', courseRoutes);
 
 // TODO: Add course-member routes for announcements, quizzes, submissions, search.
 // TODO(file owner): integrate authorized storage/extraction operations.

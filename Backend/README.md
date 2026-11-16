@@ -190,6 +190,51 @@ produce them, such as duplicate or missing enrollments. Controllers and validati
 middleware respond to expected failures locally; unexpected errors reach
 `errorHandler`, which logs them and always returns 500.
 
+## User course endpoints
+
+| Method | Path | Behavior |
+| --- | --- | --- |
+| GET | `/api/courses` | List only the current user's enrolled courses, including for administrators |
+| GET | `/api/courses/:courseId` | Get course metadata and the current user's course role |
+| GET | `/api/courses/:courseId/dashboard` | Get recent updates and a student/instructor dashboard |
+
+The authentication owner should mount session-cookie middleware before the API
+routes and store `req.session.currentUser = { id: user.id }` after login.
+`src/middleware/current-user.ts` assumes that session already exists, loads the
+account from PostgreSQL, and sets `res.locals.currentUser`. Missing/inactive
+accounts return 401; accounts requiring a password change return 403.
+Error messages are always `Unauthorized` for 401 and `Forbidden` for 403.
+Cookie parsing, session verification, login, and the session store remain TODOs; no ID
+is taken from an unverified request header, query parameter, or body.
+
+Course access is checked against current enrollments. Regular users cannot read
+archived courses; administrators can read them with `readOnly: true`. A user's
+`role` is null when an administrator accesses a course without enrollment.
+
+Dashboard limits are configured in `src/constants/dashboard.ts`.
+Dashboards contain at most five recent announcements, five upcoming assessments,
+and five recent resources. Recent sections sort by creation time descending with
+ID tie-breaking. Upcoming assignments and quizzes have a due date at or after the
+current time and sort by due date, type, and ID. Assessments with no deadline do
+not appear in the upcoming section.
+
+Students see visible announcements/assignments and visible published quizzes,
+plus shared resources and their own private resources. They receive their own
+latest quiz attempt status or assignment submission status. Instructors and
+administrators also see hidden course materials and draft assessments, with
+management permissions on active courses. Private notes belonging to other
+users remain excluded. Answer keys, answers, scores, password hashes, and storage
+keys never appear in dashboard summaries.
+
+The instructor/admin view includes up to five active assessment submission rates:
+visible assignments not past due and visible published quizzes currently open,
+including assessments with no deadline. Rates count distinct currently enrolled,
+active student accounts, so repeated quiz attempts do not inflate the rate.
+Draft attempts and submissions from former/inactive members are excluded.
+`submissionRate` is a fraction from 0 to 1, or 0 when no students are eligible;
+`gradedCount` is null for assignments because their file-submission table has no
+grading state. Archived dashboards disable all management permissions.
+
 ## Team integration TODOs
 
 Authentication owner:
@@ -197,8 +242,8 @@ Authentication owner:
 - Mount session verification and CSRF protection before the admin router.
 - Replace the `next()` placeholder with session verification and checks for
   `isActive`, `isAdmin`, and `mustChangePassword` on every admin request.
-- Implement login/logout, password hashing/reset, session invalidation, and initial
-  admin provisioning. The session table is storage groundwork, not a configured
+- Implement login/logout, password hashing/reset, and session invalidation.
+  The default admin seed is available above. The session table is storage groundwork, not a configured
   Express session store; adapt the table/store together as needed.
 - Implement `POST /api/admin/users`: temporary-password generation and hashing,
   one-time response with `Cache-Control: no-store`, and `mustChangePassword=true`.
@@ -211,9 +256,8 @@ File-processing owner:
 - Integrate final submission archival with S3 before marking submissions finalized.
   No S3 keys or extracted PDF content are fabricated by these endpoints.
 
-Next backend slices: course-member authorization, course management reads,
-announcements, quizzes/questions, submissions/grading, and course-scoped PDF
-search. Their tables exist; their endpoints are not implemented yet.
+Next backend slices: announcements, quizzes/questions, submissions/grading, and
+course-scoped PDF search. Their tables exist; their endpoints are not implemented yet.
 
 ## Verification
 

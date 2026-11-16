@@ -1,3 +1,5 @@
+import type { CourseRole } from './enrollments';
+
 // Course request bodies, validated data, database records, and responses.
 export type CourseStatus = 'active' | 'archived';
 
@@ -61,4 +63,22 @@ export type CourseResponse = {
   courseCode: string;
   description: string | null;
   status: string;
+};
+
+export type AccessibleCourseResponse = {
+  id: number;
+  name: string;
+  courseCode: string;
+  description: string | null;
+  status: string;
+  role: CourseRole | null;
+};
+
+export type CourseAccessRecord = {
+  id: number;
+  name: string;
+  courseCode: string;
+  description: string | null;
+  status: string;
+  enrollments: { role: string }[];
 };
