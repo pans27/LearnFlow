@@ -2,6 +2,7 @@
 export type {
   CourseStatus, CourseBody, CourseStatusBody, CourseCreateData, CourseUpdateData,
   CourseInsertData, CourseSaveData, CourseRecord, LockedCourse, CourseLockRow, CourseResponse,
+  AccessibleCourseResponse, CourseAccessRecord,
 } from './courses';
 export type {
   UserBody, UserUpdateData, PublicUserRecord, UserResponse, CreateUserResponse,
@@ -14,3 +15,8 @@ export type {
 } from './enrollments';
 export type { ErrorResponse, HealthResponse } from './common';
 export type { ValidatedLocals, ValidatedBodyField } from './validation';
+export type { SessionUser, UserSession, SessionRequest, CurrentUser, SessionAccount } from './session';
+export type {
+  DashboardAnnouncement, DashboardAssessment, DashboardResource, DashboardPermissions,
+  ActiveAssessmentStatistics, DashboardResponse,
+} from './dashboard';

@@ -1,9 +1,11 @@
 import type { CourseCreateData, CourseUpdateData, CourseStatus } from './courses';
 import type { UserUpdateData } from './users';
 import type { EnrollmentCreateData, EnrollmentUpdateData, BulkEnrollmentData, BulkRemovalData } from './enrollments';
+import type { CurrentUser } from './session';
 
 // Validation middleware stores parsed values in response locals.
 export type ValidatedLocals = {
+  currentUser?: CurrentUser;
   courseId?: number;
   userId?: number;
   courseData?: CourseCreateData;

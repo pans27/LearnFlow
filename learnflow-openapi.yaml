@@ -12,8 +12,8 @@ info:
     public registration is not supported. New accounts must replace their generated temporary password
     on first login. While mustChangePassword is true, middleware permits only GET /api/auth/me,
     POST /api/auth/change-password, and POST /api/auth/logout; all other protected operations return
-    403 with a password-change-required message, including administrator operations. Check this persisted
-    user flag on every protected request. The initial administrator is provisioned outside the public API.
+    403 Forbidden, including administrator operations. Check this persisted
+    user flag on every protected request. Error bodies use message Unauthorized for HTTP 401 and message Forbidden for HTTP 403. The initial administrator is provisioned outside the public API.
 servers:
 - url: http://localhost:3000
   description: Local Express API
@@ -57,13 +57,13 @@ paths:
               schema:
                 $ref: '#/components/schemas/Error'
         '401':
-          description: Missing, invalid, or expired session
+          description: Unauthorized
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
         '403':
-          description: Current password is incorrect
+          description: Forbidden
           content:
             application/json:
               schema:
@@ -106,7 +106,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/User'
         '401':
-          description: Login failed for any reason, including invalid input, invalid credentials, or an inactive account.
+          description: Unauthorized
           content:
             application/json:
               schema:
@@ -139,7 +139,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/User'
         '401':
-          description: Not authenticated
+          description: Unauthorized
           content:
             application/json:
               schema:
@@ -181,13 +181,13 @@ paths:
               schema:
                 $ref: '#/components/schemas/Error'
         '401':
-          description: Not authenticated
+          description: Unauthorized
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
         '403':
-          description: Administrator permission required or password change required.
+          description: Forbidden
           content:
             application/json:
               schema:
@@ -228,13 +228,13 @@ paths:
               schema:
                 $ref: '#/components/schemas/Error'
         '401':
-          description: Not authenticated
+          description: Unauthorized
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
         '403':
-          description: Insufficient permission
+          description: Forbidden
           content:
             application/json:
               schema:
@@ -264,13 +264,13 @@ paths:
               schema:
                 $ref: '#/components/schemas/Error'
         '401':
-          description: Not authenticated
+          description: Unauthorized
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
         '403':
-          description: Insufficient permission
+          description: Forbidden
           content:
             application/json:
               schema:
@@ -316,13 +316,13 @@ paths:
               schema:
                 $ref: '#/components/schemas/Error'
         '401':
-          description: Not authenticated
+          description: Unauthorized
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
         '403':
-          description: Insufficient permission
+          description: Forbidden
           content:
             application/json:
               schema:
@@ -364,13 +364,13 @@ paths:
               schema:
                 $ref: '#/components/schemas/Error'
         '401':
-          description: Not authenticated
+          description: Unauthorized
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
         '403':
-          description: Insufficient permission
+          description: Forbidden
           content:
             application/json:
               schema:
@@ -420,13 +420,13 @@ paths:
               schema:
                 $ref: '#/components/schemas/Error'
         '401':
-          description: Not authenticated
+          description: Unauthorized
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
         '403':
-          description: Insufficient permission
+          description: Forbidden
           content:
             application/json:
               schema:
@@ -483,13 +483,13 @@ paths:
               schema:
                 $ref: '#/components/schemas/Error'
         '401':
-          description: Not authenticated
+          description: Unauthorized
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
         '403':
-          description: Insufficient permission
+          description: Forbidden
           content:
             application/json:
               schema:
@@ -545,13 +545,13 @@ paths:
               schema:
                 $ref: '#/components/schemas/Error'
         '401':
-          description: Not authenticated
+          description: Unauthorized
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
         '403':
-          description: Insufficient permission
+          description: Forbidden
           content:
             application/json:
               schema:
@@ -589,13 +589,13 @@ paths:
               schema:
                 $ref: '#/components/schemas/Error'
         '401':
-          description: Not authenticated
+          description: Unauthorized
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
         '403':
-          description: Insufficient permission
+          description: Forbidden
           content:
             application/json:
               schema:
@@ -650,13 +650,13 @@ paths:
               schema:
                 $ref: '#/components/schemas/Error'
         '401':
-          description: Not authenticated
+          description: Unauthorized
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
         '403':
-          description: Insufficient permission
+          description: Forbidden
           content:
             application/json:
               schema:
@@ -706,13 +706,13 @@ paths:
               schema:
                 $ref: '#/components/schemas/Error'
         '401':
-          description: Not authenticated.
+          description: Unauthorized
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
         '403':
-          description: Administrator permission required.
+          description: Forbidden
           content:
             application/json:
               schema:
@@ -762,13 +762,13 @@ paths:
               schema:
                 $ref: '#/components/schemas/Error'
         '401':
-          description: Not authenticated.
+          description: Unauthorized
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
         '403':
-          description: Administrator permission required.
+          description: Forbidden
           content:
             application/json:
               schema:
@@ -831,13 +831,13 @@ paths:
               schema:
                 $ref: '#/components/schemas/Error'
         '401':
-          description: Not authenticated
+          description: Unauthorized
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
         '403':
-          description: Insufficient permission
+          description: Forbidden
           content:
             application/json:
               schema:
@@ -869,13 +869,13 @@ paths:
               schema:
                 $ref: '#/components/schemas/Error'
         '401':
-          description: Not authenticated
+          description: Unauthorized
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
         '403':
-          description: Insufficient permission
+          description: Forbidden
           content:
             application/json:
               schema:
@@ -898,6 +898,7 @@ paths:
       - Courses
       operationId: get_api_courses
       summary: List accessible courses
+      description: Lists only courses the current user is enrolled in, ordered by course code and ID. Archived enrolled courses remain administrator-only; use the admin courses endpoint to list all courses.
       security:
       - sessionCookie: []
       responses:
@@ -908,7 +909,7 @@ paths:
               schema:
                 type: array
                 items:
-                  $ref: '#/components/schemas/Course'
+                  $ref: '#/components/schemas/AccessibleCourse'
         '400':
           description: Invalid input
           content:
@@ -916,13 +917,13 @@ paths:
               schema:
                 $ref: '#/components/schemas/Error'
         '401':
-          description: Not authenticated
+          description: Unauthorized
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
         '403':
-          description: Insufficient permission
+          description: Forbidden
           content:
             application/json:
               schema:
@@ -933,6 +934,7 @@ paths:
       - Courses
       operationId: get_api_courses_courseId
       summary: Get course and current membership
+      description: Requires enrollment unless the current user is an administrator; archived courses are administrator-only.
       parameters:
       - $ref: '#/components/parameters/courseId'
       security:
@@ -943,7 +945,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Course'
+                $ref: '#/components/schemas/AccessibleCourse'
         '400':
           description: Invalid input
           content:
@@ -951,13 +953,13 @@ paths:
               schema:
                 $ref: '#/components/schemas/Error'
         '401':
-          description: Not authenticated
+          description: Unauthorized
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
         '403':
-          description: Insufficient permission
+          description: Forbidden
           content:
             application/json:
               schema:
@@ -974,6 +976,11 @@ paths:
       - Courses
       operationId: get_api_courses_courseId_dashboard
       summary: Get course dashboard summary
+      description: >-
+        Returns up to five recent announcements, upcoming assessments, and recent resources from one course snapshot.
+        Students see permitted content and their own submission status; instructors and administrators also see hidden course materials,
+        assessment drafts, management permissions, and active assessment submission rates.
+        Other users' private notes, answer keys, answers, grades, and storage keys are omitted; archived dashboards are administrator-only and read-only.
       parameters:
       - $ref: '#/components/parameters/courseId'
       security:
@@ -992,13 +999,13 @@ paths:
               schema:
                 $ref: '#/components/schemas/Error'
         '401':
-          description: Not authenticated
+          description: Unauthorized
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
         '403':
-          description: Insufficient permission
+          description: Forbidden
           content:
             application/json:
               schema:
@@ -1047,13 +1054,13 @@ paths:
               schema:
                 $ref: '#/components/schemas/Error'
         '401':
-          description: Not authenticated
+          description: Unauthorized
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
         '403':
-          description: Insufficient permission
+          description: Forbidden
           content:
             application/json:
               schema:
@@ -1101,13 +1108,13 @@ paths:
               schema:
                 $ref: '#/components/schemas/Error'
         '401':
-          description: Not authenticated
+          description: Unauthorized
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
         '403':
-          description: Insufficient permission
+          description: Forbidden
           content:
             application/json:
               schema:
@@ -1143,13 +1150,13 @@ paths:
               schema:
                 $ref: '#/components/schemas/Error'
         '401':
-          description: Not authenticated
+          description: Unauthorized
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
         '403':
-          description: Insufficient permission
+          description: Forbidden
           content:
             application/json:
               schema:
@@ -1195,13 +1202,13 @@ paths:
               schema:
                 $ref: '#/components/schemas/Error'
         '401':
-          description: Not authenticated
+          description: Unauthorized
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
         '403':
-          description: Insufficient permission
+          description: Forbidden
           content:
             application/json:
               schema:
@@ -1232,13 +1239,13 @@ paths:
               schema:
                 $ref: '#/components/schemas/Error'
         '401':
-          description: Not authenticated
+          description: Unauthorized
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
         '403':
-          description: Insufficient permission
+          description: Forbidden
           content:
             application/json:
               schema:
@@ -1275,13 +1282,13 @@ paths:
               schema:
                 $ref: '#/components/schemas/Error'
         '401':
-          description: Not authenticated
+          description: Unauthorized
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
         '403':
-          description: Insufficient permission
+          description: Forbidden
           content:
             application/json:
               schema:
@@ -1331,13 +1338,13 @@ paths:
               schema:
                 $ref: '#/components/schemas/Error'
         '401':
-          description: Not authenticated
+          description: Unauthorized
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
         '403':
-          description: Insufficient permission
+          description: Forbidden
           content:
             application/json:
               schema:
@@ -1373,13 +1380,13 @@ paths:
               schema:
                 $ref: '#/components/schemas/Error'
         '401':
-          description: Not authenticated
+          description: Unauthorized
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
         '403':
-          description: Insufficient permission
+          description: Forbidden
           content:
             application/json:
               schema:
@@ -1428,13 +1435,13 @@ paths:
               schema:
                 $ref: '#/components/schemas/Error'
         '401':
-          description: Not authenticated
+          description: Unauthorized
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
         '403':
-          description: Insufficient permission
+          description: Forbidden
           content:
             application/json:
               schema:
@@ -1465,13 +1472,13 @@ paths:
               schema:
                 $ref: '#/components/schemas/Error'
         '401':
-          description: Not authenticated
+          description: Unauthorized
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
         '403':
-          description: Insufficient permission
+          description: Forbidden
           content:
             application/json:
               schema:
@@ -1528,13 +1535,13 @@ paths:
               schema:
                 $ref: '#/components/schemas/Error'
         '401':
-          description: Not authenticated
+          description: Unauthorized
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
         '403':
-          description: Insufficient permission
+          description: Forbidden
           content:
             application/json:
               schema:
@@ -1585,13 +1592,13 @@ paths:
               schema:
                 $ref: '#/components/schemas/Error'
         '401':
-          description: Not authenticated
+          description: Unauthorized
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
         '403':
-          description: Insufficient permission
+          description: Forbidden
           content:
             application/json:
               schema:
@@ -1636,13 +1643,13 @@ paths:
               schema:
                 $ref: '#/components/schemas/Error'
         '401':
-          description: Not authenticated
+          description: Unauthorized
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
         '403':
-          description: Insufficient permission
+          description: Forbidden
           content:
             application/json:
               schema:
@@ -1680,13 +1687,13 @@ paths:
               schema:
                 $ref: '#/components/schemas/Error'
         '401':
-          description: Not authenticated
+          description: Unauthorized
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
         '403':
-          description: Insufficient permission
+          description: Forbidden
           content:
             application/json:
               schema:
@@ -1723,13 +1730,13 @@ paths:
               schema:
                 $ref: '#/components/schemas/Error'
         '401':
-          description: Not authenticated
+          description: Unauthorized
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
         '403':
-          description: Insufficient permission
+          description: Forbidden
           content:
             application/json:
               schema:
@@ -1781,13 +1788,13 @@ paths:
               schema:
                 $ref: '#/components/schemas/Error'
         '401':
-          description: Not authenticated
+          description: Unauthorized
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
         '403':
-          description: Insufficient permission
+          description: Forbidden
           content:
             application/json:
               schema:
@@ -1823,13 +1830,13 @@ paths:
               schema:
                 $ref: '#/components/schemas/Error'
         '401':
-          description: Not authenticated
+          description: Unauthorized
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
         '403':
-          description: Insufficient permission
+          description: Forbidden
           content:
             application/json:
               schema:
@@ -1886,13 +1893,13 @@ paths:
               schema:
                 $ref: '#/components/schemas/Error'
         '401':
-          description: Not authenticated
+          description: Unauthorized
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
         '403':
-          description: Insufficient permission
+          description: Forbidden
           content:
             application/json:
               schema:
@@ -1925,13 +1932,13 @@ paths:
               schema:
                 $ref: '#/components/schemas/Error'
         '401':
-          description: Not authenticated
+          description: Unauthorized
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
         '403':
-          description: Insufficient permission
+          description: Forbidden
           content:
             application/json:
               schema:
@@ -1990,13 +1997,13 @@ paths:
               schema:
                 $ref: '#/components/schemas/Error'
         '401':
-          description: Not authenticated
+          description: Unauthorized
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
         '403':
-          description: Insufficient permission
+          description: Forbidden
           content:
             application/json:
               schema:
@@ -2051,13 +2058,13 @@ paths:
               schema:
                 $ref: '#/components/schemas/Error'
         '401':
-          description: Not authenticated
+          description: Unauthorized
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
         '403':
-          description: Insufficient permission
+          description: Forbidden
           content:
             application/json:
               schema:
@@ -2091,13 +2098,13 @@ paths:
               schema:
                 $ref: '#/components/schemas/Error'
         '401':
-          description: Not authenticated
+          description: Unauthorized
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
         '403':
-          description: Insufficient permission
+          description: Forbidden
           content:
             application/json:
               schema:
@@ -2135,13 +2142,13 @@ paths:
               schema:
                 $ref: '#/components/schemas/Error'
         '401':
-          description: Not authenticated
+          description: Unauthorized
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
         '403':
-          description: Insufficient permission
+          description: Forbidden
           content:
             application/json:
               schema:
@@ -2184,13 +2191,13 @@ paths:
               schema:
                 $ref: '#/components/schemas/Error'
         '401':
-          description: Not authenticated
+          description: Unauthorized
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
         '403':
-          description: Insufficient permission
+          description: Forbidden
           content:
             application/json:
               schema:
@@ -2227,13 +2234,13 @@ paths:
               schema:
                 $ref: '#/components/schemas/Error'
         '401':
-          description: Not authenticated
+          description: Unauthorized
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
         '403':
-          description: Insufficient permission
+          description: Forbidden
           content:
             application/json:
               schema:
@@ -2269,13 +2276,13 @@ paths:
               schema:
                 $ref: '#/components/schemas/Error'
         '401':
-          description: Not authenticated
+          description: Unauthorized
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
         '403':
-          description: Insufficient permission
+          description: Forbidden
           content:
             application/json:
               schema:
@@ -2335,13 +2342,13 @@ paths:
               schema:
                 $ref: '#/components/schemas/Error'
         '401':
-          description: Not authenticated
+          description: Unauthorized
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
         '403':
-          description: Insufficient permission
+          description: Forbidden
           content:
             application/json:
               schema:
@@ -2385,13 +2392,13 @@ paths:
               schema:
                 $ref: '#/components/schemas/Error'
         '401':
-          description: Not authenticated
+          description: Unauthorized
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
         '403':
-          description: Insufficient permission
+          description: Forbidden
           content:
             application/json:
               schema:
@@ -2428,13 +2435,13 @@ paths:
               schema:
                 $ref: '#/components/schemas/Error'
         '401':
-          description: Not authenticated
+          description: Unauthorized
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
         '403':
-          description: Insufficient permission
+          description: Forbidden
           content:
             application/json:
               schema:
@@ -2484,13 +2491,13 @@ paths:
               schema:
                 $ref: '#/components/schemas/Error'
         '401':
-          description: Not authenticated
+          description: Unauthorized
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
         '403':
-          description: Insufficient permission
+          description: Forbidden
           content:
             application/json:
               schema:
@@ -2542,13 +2549,13 @@ paths:
               schema:
                 $ref: '#/components/schemas/Error'
         '401':
-          description: Not authenticated
+          description: Unauthorized
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
         '403':
-          description: Insufficient permission
+          description: Forbidden
           content:
             application/json:
               schema:
@@ -2608,13 +2615,13 @@ paths:
               schema:
                 $ref: '#/components/schemas/Error'
         '401':
-          description: Not authenticated
+          description: Unauthorized
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
         '403':
-          description: Insufficient permission
+          description: Forbidden
           content:
             application/json:
               schema:
@@ -2657,13 +2664,13 @@ paths:
               schema:
                 $ref: '#/components/schemas/Error'
         '401':
-          description: Not authenticated
+          description: Unauthorized
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
         '403':
-          description: Insufficient permission
+          description: Forbidden
           content:
             application/json:
               schema:
@@ -2699,13 +2706,13 @@ paths:
               schema:
                 $ref: '#/components/schemas/Error'
         '401':
-          description: Not authenticated
+          description: Unauthorized
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
         '403':
-          description: Insufficient permission
+          description: Forbidden
           content:
             application/json:
               schema:
@@ -2756,13 +2763,13 @@ paths:
               schema:
                 $ref: '#/components/schemas/Error'
         '401':
-          description: Not authenticated
+          description: Unauthorized
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
         '403':
-          description: Insufficient permission
+          description: Forbidden
           content:
             application/json:
               schema:
@@ -2793,13 +2800,13 @@ paths:
               schema:
                 $ref: '#/components/schemas/Error'
         '401':
-          description: Not authenticated
+          description: Unauthorized
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
         '403':
-          description: Insufficient permission
+          description: Forbidden
           content:
             application/json:
               schema:
@@ -2835,13 +2842,13 @@ paths:
               schema:
                 $ref: '#/components/schemas/Error'
         '401':
-          description: Not authenticated
+          description: Unauthorized
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
         '403':
-          description: Insufficient permission
+          description: Forbidden
           content:
             application/json:
               schema:
@@ -2877,13 +2884,13 @@ paths:
               schema:
                 $ref: '#/components/schemas/Error'
         '401':
-          description: Not authenticated
+          description: Unauthorized
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
         '403':
-          description: Insufficient permission
+          description: Forbidden
           content:
             application/json:
               schema:
@@ -3372,21 +3379,164 @@ components:
           format: date-time
       required:
       - url
+    AccessibleCourse:
+      allOf:
+      - $ref: '#/components/schemas/Course'
+      - type: object
+        required: [role]
+        properties:
+          role:
+            type: string
+            nullable: true
+            enum: [student, instructor]
+            description: Current user's course role, or null for an administrator without membership.
     Dashboard:
       type: object
+      required: [course, view, readOnly, permissions, recentAnnouncements, upcomingAssessments, recentResources]
       properties:
+        course:
+          $ref: '#/components/schemas/AccessibleCourse'
+        view:
+          type: string
+          enum: [student, instructor]
+          description: Administrators receive the instructor view.
+        readOnly:
+          type: boolean
+        permissions:
+          $ref: '#/components/schemas/DashboardPermissions'
         recentAnnouncements:
           type: array
+          maxItems: 5
           items:
-            $ref: '#/components/schemas/Announcement'
+            $ref: '#/components/schemas/DashboardAnnouncement'
         upcomingAssessments:
           type: array
+          maxItems: 5
+          description: Assignments and quizzes with current or future deadlines, ordered by dueAt, type, and ID.
           items:
-            $ref: '#/components/schemas/Assignment'
+            $ref: '#/components/schemas/DashboardAssessment'
         recentResources:
           type: array
+          maxItems: 5
           items:
-            $ref: '#/components/schemas/Resource'
+            $ref: '#/components/schemas/DashboardResource'
+        activeAssessmentStatistics:
+          type: array
+          maxItems: 5
+          description: Instructor/admin view only; visible assignments not past due and visible published quizzes currently open, with missing deadlines last.
+          items:
+            $ref: '#/components/schemas/ActiveAssessmentStatistics'
+    DashboardPermissions:
+      type: object
+      required: [canPublishAnnouncements, canCreateAssessments, canManageResources, canReviewSubmissions]
+      properties:
+        canPublishAnnouncements:
+          type: boolean
+        canCreateAssessments:
+          type: boolean
+        canManageResources:
+          type: boolean
+        canReviewSubmissions:
+          type: boolean
+    DashboardAnnouncement:
+      type: object
+      required: [id, title, body, isVisible, createdAt]
+      properties:
+        id:
+          $ref: '#/components/schemas/EntityId'
+        title:
+          type: string
+        body:
+          type: string
+        isVisible:
+          type: boolean
+        createdAt:
+          type: string
+          format: date-time
+    DashboardAssessment:
+      type: object
+      required: [id, type, title, dueAt, opensAt, isVisible, status]
+      properties:
+        id:
+          $ref: '#/components/schemas/EntityId'
+        type:
+          type: string
+          enum: [assignment, quiz]
+        title:
+          type: string
+        dueAt:
+          type: string
+          format: date-time
+        opensAt:
+          type: string
+          format: date-time
+          nullable: true
+        isVisible:
+          type: boolean
+        status:
+          type: string
+          nullable: true
+          description: Quiz status; null for assignments.
+        submissionStatus:
+          type: string
+          enum: [not_started, draft, submitted, graded]
+          description: Student view only; latest quiz attempt status or assignment submission status.
+    DashboardResource:
+      type: object
+      required: [id, title, resourceType, ownerId, visibility, extractionStatus, createdAt]
+      properties:
+        id:
+          $ref: '#/components/schemas/EntityId'
+        title:
+          type: string
+        resourceType:
+          type: string
+          enum: [instructor_material, student_note, assignment_file]
+        ownerId:
+          $ref: '#/components/schemas/EntityId'
+        visibility:
+          type: string
+          enum: [visible, hidden]
+        extractionStatus:
+          type: string
+          enum: [pending, processing, completed, failed]
+        createdAt:
+          type: string
+          format: date-time
+    ActiveAssessmentStatistics:
+      type: object
+      required: [assessmentId, type, title, eligibleStudents, submittedCount, gradedCount, submissionRate]
+      properties:
+        assessmentId:
+          $ref: '#/components/schemas/EntityId'
+        type:
+          type: string
+          enum: [assignment, quiz]
+        title:
+          type: string
+        eligibleStudents:
+          type: integer
+          minimum: 0
+          description: Active accounts currently enrolled as students in this course.
+        submittedCount:
+          type: integer
+          minimum: 0
+          description: Distinct eligible students with a submitted or graded quiz attempt, or an assignment file submission.
+        gradedCount:
+          type: integer
+          nullable: true
+          minimum: 0
+          description: Distinct eligible students with a graded quiz attempt; null for assignments.
+        submissionRate:
+          type: number
+          minimum: 0
+          maximum: 1
+          description: submittedCount divided by eligibleStudents, or zero when there are no eligible students.
+    EntityId:
+      type: integer
+      format: int32
+      minimum: 1
+      maximum: 2147483647
     QuizStatistics:
       type: object
       properties:
