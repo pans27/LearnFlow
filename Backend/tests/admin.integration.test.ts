@@ -4,6 +4,7 @@ import { spawnSync } from 'node:child_process';
 import { once } from 'node:events';
 import pg from 'pg';
 import type { CourseBody } from '../src/types';
+import { scryptSync, timingSafeEqual } from 'node:crypto';
 
 // Opt in with the URL of a local PostgreSQL account allowed to CREATE DATABASE.
 // Tests create/migrate/drop a uniquely named database; no existing tables are reset.
@@ -174,5 +175,29 @@ test('admin API and single-schema database integrity', {
     ]);
     assert.equal(results.filter((result) => result.status === 'fulfilled').length, 1);
     assert.equal(await prisma.user.count({ where: { isAdmin: true, isActive: true } }), 1);
+  });
+
+  await t.test('default administrator seeding is idempotent and stores a verifiable salted hash', async () => {
+    const { seedDefaultAdmin } = await import('../src/db/seed-admin');
+    const password = 'TestOnlySeedPassword123!';
+    const seeded = await seedDefaultAdmin({ email: 'seed@example.test', password });
+    assert.equal(seeded.created, true);
+    assert.equal(seeded.temporaryPassword, password);
+    const record = await prisma.user.findUniqueOrThrow({ where: { id: seeded.id } });
+    assert.equal(record.isAdmin, true);
+    assert.equal(record.isActive, true);
+    assert.equal(record.mustChangePassword, true);
+    assert.notEqual(record.passwordHash, password);
+    const [algorithm, n, r, p, salt, key] = record.passwordHash.split('$');
+    assert.equal(algorithm, 'scrypt');
+    assert.ok(timingSafeEqual(Buffer.from(key, 'hex'), scryptSync(password, salt, 64, { N: Number(n), r: Number(r), p: Number(p) })));
+    const repeated = await seedDefaultAdmin({ email: 'SEED@example.test', password: 'DoNotReplacePassword123!' });
+    assert.equal(repeated.created, false);
+    assert.equal(repeated.id, record.id);
+    assert.equal(repeated.temporaryPassword, undefined);
+    assert.equal((await prisma.user.findUniqueOrThrow({ where: { id: record.id } })).passwordHash, record.passwordHash);
+    const normal = await createUser('collision@example.test');
+    await assert.rejects(seedDefaultAdmin({ email: normal.email }));
+    assert.equal((await prisma.user.findUniqueOrThrow({ where: { id: normal.id } })).isAdmin, false);
   });
 });

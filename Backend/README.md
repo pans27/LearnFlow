@@ -47,6 +47,33 @@ If you changed `DB_PORT`, also update the port in `.env`'s `DATABASE_URL`.
 Stop the API container first (`docker compose stop api`) if it occupies port 3000.
 `npm start` runs without watching. `npm run db:check` verifies Prisma connectivity.
 
+## Default administrator
+
+Create the local default administrator after applying migrations:
+
+```powershell
+docker compose exec api npm run db:seed
+# Or, when running Node locally with DATABASE_URL configured:
+npm run db:seed
+```
+
+The default email is `admin@learnflow.local`. The seed generates a random
+temporary password and displays it only when creating the account. Repeating
+the seed preserves the existing administrator's password and settings. An email
+already belonging to a non-admin or inactive account causes an error without
+changing that account.
+
+Optional `DEFAULT_ADMIN_EMAIL` and `DEFAULT_ADMIN_PASSWORD` environment variables
+override creation values; the password must contain 16–128 characters. Only a
+salted hash is stored, with `isAdmin=true`, `isActive=true`, and
+`mustChangePassword=true`. Login and required password replacement still await
+the authentication owner's implementation.
+
+The seed hash format is `scrypt$16384$8$1$<salt-hex>$<key-hex>`, using Node's
+`scrypt` with N=16384, r=8, p=1, and a 64-byte key. Pass the salt's hex text as the
+salt argument when verifying, and compare the decoded key using a constant-time
+comparison; the authentication owner should change or adapt this format.
+
 ## Database ownership
 
 All tables are in one PostgreSQL schema, `learnflow`. Every course-owned table

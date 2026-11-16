@@ -30,3 +30,15 @@ export type CreateUserResponse = {
   user: UserResponse;
   temporaryPassword: string;
 };
+
+export type DefaultAdminOptions = {
+  email?: string;
+  password?: string;
+};
+
+export type DefaultAdminResult = {
+  id: number;
+  email: string;
+  created: boolean;
+  temporaryPassword?: string;
+};
