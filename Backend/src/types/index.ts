@@ -5,6 +5,7 @@ export type {
 } from './courses';
 export type {
   UserBody, UserUpdateData, PublicUserRecord, UserResponse, CreateUserResponse,
+  DefaultAdminOptions, DefaultAdminResult,
 } from './users';
 export type {
   CourseRole, EnrollmentBody, EnrollmentCreateData, EnrollmentUpdateData,
