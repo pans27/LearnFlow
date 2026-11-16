@@ -5,13 +5,14 @@ info:
   description: Proposed API contract based on the LearnFlow project proposal. Assignment-file submission routes
     are optional; quiz drafts stored in PostgreSQL before final S3 archival are a suggested implementation choice.
     All course endpoints require membership or administrator authorization; archived courses are administrator-only
-    and read-only. Route parameters are IDs, not schema names; server resolves authorized course schema. Presigned
+    and read-only except for administrator reactivation. All tables use the single learnflow PostgreSQL schema;
+    course-owned operations are scoped by authorized course_id. Route parameters are IDs, not schema names. Presigned
     URLs must be short-lived and authorization-checked. Instructor and administrator restrictions are described
     in operation text and must be implemented in middleware. Accounts are created only by administrators;
     public registration is not supported. New accounts must replace their generated temporary password
     on first login. While mustChangePassword is true, middleware permits only GET /api/auth/me,
     POST /api/auth/change-password, and POST /api/auth/logout; all other protected operations return
-    403 with error PASSWORD_CHANGE_REQUIRED, including administrator operations. Check this persisted
+    403 with a password-change-required message, including administrator operations. Check this persisted
     user flag on every protected request. The initial administrator is provisioned outside the public API.
 servers:
 - url: http://localhost:3000
@@ -186,13 +187,19 @@ paths:
               schema:
                 $ref: '#/components/schemas/Error'
         '403':
-          description: Administrator permission required or PASSWORD_CHANGE_REQUIRED
+          description: Administrator permission required or password change required.
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
         '409':
           description: A user with this email already exists (case-insensitive)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '501':
+          description: User provisioning is pending authentication-owner integration.
           content:
             application/json:
               schema:
@@ -326,6 +333,12 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
+        '409':
+          description: Cannot remove the last active administrator.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
   /api/admin/courses:
     get:
       tags:
@@ -366,7 +379,7 @@ paths:
       tags:
       - Administration
       operationId: post_api_admin_courses
-      summary: Create course and initialize schema
+      summary: Create course in the single learnflow schema
       description: Administrator only.
       security:
       - sessionCookie: []
@@ -376,14 +389,26 @@ paths:
           application/json:
             schema:
               type: object
+              additionalProperties: false
               properties:
                 name:
                   type: string
+                  minLength: 1
+                  maxLength: 200
+                courseCode:
+                  type: string
+                  minLength: 1
+                  maxLength: 50
+                  description: Optional course code; defaults to name when omitted.
+                description:
+                  type: string
+                  nullable: true
+                  maxLength: 10000
               required:
               - name
       responses:
         '201':
-          description: Success
+          description: The created course object, returned directly without an array or wrapper.
           content:
             application/json:
               schema:
@@ -418,7 +443,7 @@ paths:
       - Administration
       operationId: patch_api_admin_courses_courseId
       summary: Update course metadata
-      description: Administrator only.
+      description: Administrator only. Archived courses return 409; reactivate before editing.
       parameters:
       - $ref: '#/components/parameters/courseId'
       security:
@@ -429,9 +454,21 @@ paths:
           application/json:
             schema:
               type: object
+              additionalProperties: false
+              minProperties: 1
               properties:
                 name:
                   type: string
+                  minLength: 1
+                  maxLength: 200
+                courseCode:
+                  type: string
+                  minLength: 1
+                  maxLength: 50
+                description:
+                  type: string
+                  nullable: true
+                  maxLength: 10000
       responses:
         '200':
           description: Success
@@ -459,6 +496,12 @@ paths:
                 $ref: '#/components/schemas/Error'
         '404':
           description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '409':
+          description: Course is archived; reactivate before editing.
           content:
             application/json:
               schema:
@@ -581,7 +624,10 @@ paths:
               type: object
               properties:
                 userId:
-                  type: string
+                  type: integer
+                  format: int32
+                  minimum: 1
+                  maximum: 2147483647
                 role:
                   type: string
                   enum:
@@ -617,6 +663,130 @@ paths:
                 $ref: '#/components/schemas/Error'
         '404':
           description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '409':
+          description: Course is archived, user is inactive, or enrollment already exists.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /api/admin/courses/{courseId}/enrollments/bulk:
+    post:
+      tags:
+      - Administration
+      operationId: bulk_add_api_admin_course_enrollments
+      summary: Enroll multiple users with individual course roles
+      description: Administrator only; the course must be active. The entire batch succeeds or rolls back, and authored content is preserved.
+      parameters:
+      - $ref: '#/components/parameters/courseId'
+      security:
+      - sessionCookie: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BulkEnrollmentRequest'
+      responses:
+        '201':
+          description: The created enrollment objects.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Enrollment'
+        '400':
+          description: Invalid body, duplicate user IDs, or a batch outside the 1 to 100 entry limit.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Not authenticated.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: Administrator permission required.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Course or any requested user was not found; no memberships were added.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '409':
+          description: Course is archived, a user is inactive, or a membership already exists; no memberships were added.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Unexpected server error.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /api/admin/courses/{courseId}/enrollments/bulk-remove:
+    post:
+      tags:
+      - Administration
+      operationId: bulk_remove_api_admin_course_enrollments
+      summary: Remove multiple course enrollments
+      description: Administrator only; the course must be active. The entire batch succeeds or rolls back, and authored content is preserved.
+      parameters:
+      - $ref: '#/components/parameters/courseId'
+      security:
+      - sessionCookie: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BulkEnrollmentRemovalRequest'
+      responses:
+        '204':
+          description: All requested memberships were removed.
+        '400':
+          description: Invalid body, duplicate user IDs, or a batch outside the 1 to 100 entry limit.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Not authenticated.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: Administrator permission required.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Course or any requested membership was not found; no memberships were removed.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '409':
+          description: Course is archived.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Unexpected server error.
           content:
             application/json:
               schema:
@@ -712,6 +882,12 @@ paths:
                 $ref: '#/components/schemas/Error'
         '404':
           description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '409':
+          description: Course is archived; reactivate before removing enrollment.
           content:
             application/json:
               schema:
@@ -1339,7 +1515,10 @@ paths:
                 type: object
                 properties:
                   id:
-                    type: string
+                    type: integer
+                    format: int32
+                    minimum: 1
+                    maximum: 2147483647
                   fileKey:
                     type: string
         '400':
@@ -1388,9 +1567,15 @@ paths:
                   type: object
                   properties:
                     id:
-                      type: string
+                      type: integer
+                      format: int32
+                      minimum: 1
+                      maximum: 2147483647
                     studentId:
-                      type: string
+                      type: integer
+                      format: int32
+                      minimum: 1
+                      maximum: 2147483647
                     fileKey:
                       type: string
         '400':
@@ -1438,7 +1623,10 @@ paths:
                 type: object
                 properties:
                   id:
-                    type: string
+                    type: integer
+                    format: int32
+                    minimum: 1
+                    maximum: 2147483647
                   fileKey:
                     type: string
         '400':
@@ -2123,7 +2311,10 @@ paths:
                     type: object
                     properties:
                       questionId:
-                        type: string
+                        type: integer
+                        format: int32
+                        minimum: 1
+                        maximum: 2147483647
                       answer: {}
                     required:
                     - questionId
@@ -2710,49 +2901,73 @@ components:
       in: path
       required: true
       schema:
-        type: string
+        type: integer
+        format: int32
+        minimum: 1
+        maximum: 2147483647
     courseId:
       name: courseId
       in: path
       required: true
       schema:
-        type: string
+        type: integer
+        format: int32
+        minimum: 1
+        maximum: 2147483647
     announcementId:
       name: announcementId
       in: path
       required: true
       schema:
-        type: string
+        type: integer
+        format: int32
+        minimum: 1
+        maximum: 2147483647
     assignmentId:
       name: assignmentId
       in: path
       required: true
       schema:
-        type: string
+        type: integer
+        format: int32
+        minimum: 1
+        maximum: 2147483647
     submissionId:
       name: submissionId
       in: path
       required: true
       schema:
-        type: string
+        type: integer
+        format: int32
+        minimum: 1
+        maximum: 2147483647
     quizId:
       name: quizId
       in: path
       required: true
       schema:
-        type: string
+        type: integer
+        format: int32
+        minimum: 1
+        maximum: 2147483647
     questionId:
       name: questionId
       in: path
       required: true
       schema:
-        type: string
+        type: integer
+        format: int32
+        minimum: 1
+        maximum: 2147483647
     resourceId:
       name: resourceId
       in: path
       required: true
       schema:
-        type: string
+        type: integer
+        format: int32
+        minimum: 1
+        maximum: 2147483647
   securitySchemes:
     sessionCookie:
       type: apiKey
@@ -2763,19 +2978,20 @@ components:
   schemas:
     Error:
       type: object
+      additionalProperties: false
       properties:
-        error:
-          type: string
         message:
           type: string
       required:
-      - error
       - message
     User:
       type: object
       properties:
         id:
-          type: string
+          type: integer
+          format: int32
+          minimum: 1
+          maximum: 2147483647
         name:
           type: string
         email:
@@ -2845,11 +3061,25 @@ components:
       - newPassword
     Course:
       type: object
+      example:
+        id: 1
+        name: Software Engineering
+        courseCode: ECE1724
+        description: Course overview
+        status: active
       properties:
         id:
-          type: string
+          type: integer
+          format: int32
+          minimum: 1
+          maximum: 2147483647
         name:
           type: string
+        courseCode:
+          type: string
+        description:
+          type: string
+          nullable: true
         status:
           type: string
           enum:
@@ -2865,13 +3095,67 @@ components:
       - id
       - name
       - status
+    BulkEnrollmentRequest:
+      type: object
+      additionalProperties: false
+      required: [enrollments]
+      properties:
+        enrollments:
+          type: array
+          minItems: 1
+          maxItems: 100
+          description: User IDs must be unique within the batch.
+          items:
+            type: object
+            additionalProperties: false
+            required: [userId, role]
+            properties:
+              userId:
+                type: integer
+                format: int32
+                minimum: 1
+                maximum: 2147483647
+                description: A positive PostgreSQL integer ID.
+              role:
+                type: string
+                enum: [student, instructor]
+      example:
+        enrollments:
+        - userId: 2
+          role: student
+        - userId: 3
+          role: instructor
+    BulkEnrollmentRemovalRequest:
+      type: object
+      additionalProperties: false
+      required: [userIds]
+      properties:
+        userIds:
+          type: array
+          minItems: 1
+          maxItems: 100
+          uniqueItems: true
+          items:
+            type: integer
+            format: int32
+            minimum: 1
+            maximum: 2147483647
+            description: A positive PostgreSQL integer ID.
+      example:
+        userIds: [2, 3]
     Enrollment:
       type: object
       properties:
         userId:
-          type: string
+          type: integer
+          format: int32
+          minimum: 1
+          maximum: 2147483647
         courseId:
-          type: string
+          type: integer
+          format: int32
+          minimum: 1
+          maximum: 2147483647
         role:
           type: string
           enum:
@@ -2885,7 +3169,10 @@ components:
       type: object
       properties:
         id:
-          type: string
+          type: integer
+          format: int32
+          minimum: 1
+          maximum: 2147483647
         title:
           type: string
         body:
@@ -2901,7 +3188,10 @@ components:
       type: object
       properties:
         id:
-          type: string
+          type: integer
+          format: int32
+          minimum: 1
+          maximum: 2147483647
         title:
           type: string
         description:
@@ -2917,7 +3207,10 @@ components:
       type: object
       properties:
         id:
-          type: string
+          type: integer
+          format: int32
+          minimum: 1
+          maximum: 2147483647
         type:
           type: string
           enum:
@@ -2940,7 +3233,10 @@ components:
       type: object
       properties:
         id:
-          type: string
+          type: integer
+          format: int32
+          minimum: 1
+          maximum: 2147483647
         title:
           type: string
         description:
@@ -2967,11 +3263,20 @@ components:
       type: object
       properties:
         id:
-          type: string
+          type: integer
+          format: int32
+          minimum: 1
+          maximum: 2147483647
         quizId:
-          type: string
+          type: integer
+          format: int32
+          minimum: 1
+          maximum: 2147483647
         studentId:
-          type: string
+          type: integer
+          format: int32
+          minimum: 1
+          maximum: 2147483647
         status:
           type: string
           enum:
@@ -2984,7 +3289,10 @@ components:
             type: object
             properties:
               questionId:
-                type: string
+                type: integer
+                format: int32
+                minimum: 1
+                maximum: 2147483647
               answer: {}
             required:
             - questionId
@@ -3003,7 +3311,10 @@ components:
       type: object
       properties:
         id:
-          type: string
+          type: integer
+          format: int32
+          minimum: 1
+          maximum: 2147483647
         title:
           type: string
         resourceType:
@@ -3013,7 +3324,10 @@ components:
           - student_note
           - assignment_file
         ownerId:
-          type: string
+          type: integer
+          format: int32
+          minimum: 1
+          maximum: 2147483647
         visibility:
           type: string
           enum:

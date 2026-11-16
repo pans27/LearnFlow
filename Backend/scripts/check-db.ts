@@ -1,5 +1,6 @@
 import { getPrisma, closeDatabase } from '../src/database';
 
+// Verify the PostgreSQL connection with a query through Prisma.
 try {
   await getPrisma().$queryRaw`SELECT 1`;
   console.log('PostgreSQL connection successful');

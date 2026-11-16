@@ -8,5 +8,5 @@
     "types": ["node"],
     "esModuleInterop": true
   },
-  "include": ["src/**/*.ts", "scripts/**/*.ts", "prisma.config.ts"]
+  "include": ["src/**/*.ts", "scripts/**/*.ts", "tests/**/*.ts", "prisma.config.ts"]
 }

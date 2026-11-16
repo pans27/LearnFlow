@@ -12,6 +12,7 @@ server.on('error', (error) => {
 });
 
 let shuttingDown = false;
+// Close the HTTP listener and database connection before exiting.
 function shutdown() {
   if (shuttingDown) return;
   shuttingDown = true;

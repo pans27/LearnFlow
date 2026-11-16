@@ -5,7 +5,289 @@ generator client {
 
 datasource db {
   provider = "postgresql"
+  schemas  = ["learnflow"]
 }
 
-// TODO: Add LearnFlow models after selecting the schema strategy documented
-// in the repository-root SQL files. No domain tables or migrations yet.
+// Custom checks, case-insensitive email uniqueness, triggers, and full-text
+// indexing live in the SQL migration. Preserve them in subsequent migrations.
+// Store account details and administrator flags.
+model User {
+  id                 Int   @id @default(autoincrement()) @map("user_id")
+  email              String
+  passwordHash       String   @map("password_hash")
+  name               String   @map("display_name")
+  isAdmin            Boolean  @default(false) @map("is_admin")
+  mustChangePassword Boolean  @default(true) @map("must_change_password")
+  isActive           Boolean  @default(true) @map("is_active")
+  createdAt          DateTime @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt          DateTime @default(now()) @map("updated_at") @db.Timestamptz
+  enrollments        Enrollment[]
+  sessions           Session[]
+  announcements      Announcement[]
+  assignments        Assignment[]
+  quizzes            Quiz[]
+  submissions        Submission[] @relation("StudentSubmissions")
+  gradedSubmissions  Submission[] @relation("GradedSubmissions")
+  resources          LearningResource[]
+  assignmentSubmissions AssignmentSubmission[]
+
+  @@map("users")
+  @@schema("learnflow")
+}
+
+// Store course metadata and archive status.
+model Course {
+  id            Int   @id @default(autoincrement()) @map("course_id")
+  courseCode    String   @map("course_code")
+  name          String   @map("title")
+  description   String?
+  status        String   @default("active")
+  createdAt     DateTime @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt     DateTime @default(now()) @map("updated_at") @db.Timestamptz
+  enrollments   Enrollment[]
+  announcements Announcement[]
+  assignments   Assignment[]
+  quizzes       Quiz[]
+  questions     QuizQuestion[]
+  submissions   Submission[]
+  resources     LearningResource[]
+  resourcePages ResourcePage[]
+  assignmentSubmissions AssignmentSubmission[]
+  extractionJobs ExtractionJob[]
+
+  @@index([status], map: "courses_status_idx")
+  @@map("courses")
+  @@schema("learnflow")
+}
+
+// Assign a user a role within one course.
+model Enrollment {
+  courseId   Int   @map("course_id")
+  userId     Int   @map("user_id")
+  role       String
+  enrolledAt DateTime @default(now()) @map("enrolled_at") @db.Timestamptz
+  course     Course   @relation(fields: [courseId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@id([courseId, userId])
+  @@index([userId], map: "enrollments_user_idx")
+  @@map("enrollments")
+  @@schema("learnflow")
+}
+
+// TODO(auth owner): connect session persistence, login, password hashing/reset,
+// initial admin provisioning, CSRF protection, and session invalidation.
+// Store persistent session data and expiration times.
+model Session {
+  id          String   @id @map("session_id")
+  userId      Int   @map("user_id")
+  sessionData Json     @default("{}") @map("session_data")
+  expiresAt   DateTime @map("expires_at") @db.Timestamptz
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@index([expiresAt], map: "sessions_expires_idx")
+  @@index([userId], map: "sessions_user_idx")
+  @@map("sessions")
+  @@schema("learnflow")
+}
+
+// Store course announcements and their visibility.
+model Announcement {
+  id        Int   @id @default(autoincrement()) @map("announcement_id")
+  courseId  Int   @map("course_id")
+  authorId  Int   @map("author_id")
+  title     String
+  body      String
+  isVisible Boolean  @default(true) @map("is_visible")
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt DateTime @default(now()) @map("updated_at") @db.Timestamptz
+  course    Course   @relation(fields: [courseId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  author    User     @relation(fields: [authorId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@index([courseId, createdAt(sort: Desc)], map: "announcements_recent_idx")
+  @@map("announcements")
+  @@schema("learnflow")
+}
+
+// Store assignment details and due dates.
+model Assignment {
+  id          Int   @id @default(autoincrement()) @map("assignment_id")
+  courseId    Int   @map("course_id")
+  createdBy   Int   @map("created_by")
+  title       String
+  description String?
+  dueAt       DateTime? @map("due_at") @db.Timestamptz
+  isVisible   Boolean  @default(false) @map("is_visible")
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt   DateTime @default(now()) @map("updated_at") @db.Timestamptz
+  course      Course   @relation(fields: [courseId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  creator     User     @relation(fields: [createdBy], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  submissions AssignmentSubmission[]
+
+  @@unique([courseId, id], map: "assignments_course_id_assignment_id_key")
+  @@index([courseId, dueAt], map: "assignments_due_idx")
+  @@map("assignments")
+  @@schema("learnflow")
+}
+
+// Store quiz settings and availability dates.
+model Quiz {
+  id          Int   @id @default(autoincrement()) @map("quiz_id")
+  courseId    Int   @map("course_id")
+  createdBy   Int   @map("created_by")
+  title       String
+  description String?
+  opensAt     DateTime? @map("opens_at") @db.Timestamptz
+  dueAt       DateTime? @map("due_at") @db.Timestamptz
+  isVisible   Boolean  @default(false) @map("is_visible")
+  status      String   @default("draft")
+  maxAttempts Int      @default(1) @map("max_attempts")
+  showResults Boolean  @default(false) @map("show_results")
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt   DateTime @default(now()) @map("updated_at") @db.Timestamptz
+  course      Course   @relation(fields: [courseId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  creator     User     @relation(fields: [createdBy], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  questions   QuizQuestion[]
+  submissions Submission[]
+
+  @@unique([courseId, id], map: "quizzes_course_id_quiz_id_key")
+  @@index([courseId, dueAt], map: "quizzes_due_idx")
+  @@map("quizzes")
+  @@schema("learnflow")
+}
+
+// Store ordered questions and private answer keys for a quiz.
+model QuizQuestion {
+  id           Int  @id @default(autoincrement()) @map("question_id")
+  courseId     Int  @map("course_id")
+  quizId       Int  @map("quiz_id")
+  position     Int
+  questionType String  @map("question_type")
+  prompt       String
+  options      Json?
+  answerKey    Json?   @map("answer_key")
+  points       Decimal @default(1) @db.Decimal(8, 2)
+  course       Course  @relation(fields: [courseId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  quiz         Quiz    @relation(fields: [courseId, quizId], references: [courseId, id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@unique([courseId, quizId, position], map: "quiz_questions_course_id_quiz_id_position_key")
+  @@map("quiz_questions")
+  @@schema("learnflow")
+}
+
+// Store quiz attempts, answers, and grading results.
+model Submission {
+  id            Int   @id @default(autoincrement()) @map("submission_id")
+  courseId      Int   @map("course_id")
+  quizId        Int   @map("quiz_id")
+  studentId     Int   @map("student_id")
+  attemptNumber Int      @default(1) @map("attempt_number")
+  status        String   @default("draft")
+  draftAnswers  Json     @default("{}") @map("draft_answers")
+  s3Key         String?  @map("s3_key")
+  feedback      String?
+  score         Decimal? @db.Decimal(10, 2)
+  gradedBy      Int?  @map("graded_by")
+  gradedAt      DateTime? @map("graded_at") @db.Timestamptz
+  createdAt     DateTime @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt     DateTime @default(now()) @map("updated_at") @db.Timestamptz
+  submittedAt   DateTime? @map("submitted_at") @db.Timestamptz
+  course        Course   @relation(fields: [courseId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  quiz          Quiz     @relation(fields: [courseId, quizId], references: [courseId, id], onDelete: Cascade, onUpdate: NoAction)
+  student       User     @relation("StudentSubmissions", fields: [studentId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  grader        User?    @relation("GradedSubmissions", fields: [gradedBy], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@unique([courseId, quizId, studentId, attemptNumber], map: "submissions_course_id_quiz_id_student_id_attempt_number_key")
+  @@index([courseId, quizId, status], map: "submissions_quiz_status_idx")
+  @@index([courseId, studentId], map: "submissions_student_idx")
+  @@map("submissions")
+  @@schema("learnflow")
+}
+
+// TODO(file owner): implement uploads/downloads, S3 keys, extraction workers,
+// and writing extracted pages. APIs must still authorize each course/resource.
+// Store file metadata and extraction status for a course resource.
+model LearningResource {
+  id               Int   @id @default(autoincrement()) @map("resource_id")
+  courseId         Int   @map("course_id")
+  ownerId          Int   @map("owner_id")
+  resourceType     String   @map("resource_type")
+  title            String
+  description      String?
+  originalFilename String   @map("original_filename")
+  mimeType         String   @default("application/pdf") @map("mime_type")
+  fileSizeBytes    BigInt?  @map("file_size_bytes")
+  s3Key            String   @unique(map: "learning_resources_s3_key_key") @map("s3_key")
+  isVisible        Boolean  @default(true) @map("is_visible")
+  extractionStatus String   @default("pending") @map("extraction_status")
+  pageCount        Int?     @map("page_count")
+  createdAt        DateTime @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt        DateTime @default(now()) @map("updated_at") @db.Timestamptz
+  course           Course   @relation(fields: [courseId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  owner            User     @relation(fields: [ownerId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  pages            ResourcePage[]
+  extractionJobs   ExtractionJob[]
+
+  @@unique([courseId, id], map: "learning_resources_course_id_resource_id_key")
+  @@index([courseId, createdAt(sort: Desc)], map: "resources_recent_idx")
+  @@index([courseId, ownerId], map: "resources_owner_idx")
+  @@index([courseId, resourceType], map: "resources_type_idx")
+  @@map("learning_resources")
+  @@schema("learnflow")
+}
+
+// Store extracted page text and its generated search vector.
+model ResourcePage {
+  courseId      Int @map("course_id")
+  resourceId    Int @map("resource_id")
+  pageNumber    Int    @map("page_number")
+  extractedText String @default("") @map("extracted_text")
+  searchVector  Unsupported("tsvector")? @default(dbgenerated("to_tsvector('english'::regconfig, extracted_text)")) @map("search_vector")
+  course        Course @relation(fields: [courseId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  resource      LearningResource @relation(fields: [courseId, resourceId], references: [courseId, id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@id([courseId, resourceId, pageNumber])
+  @@index([searchVector], type: Gin, map: "resource_pages_search_idx")
+  @@map("resource_pages")
+  @@schema("learnflow")
+}
+
+// Store a student file submission for an assignment.
+model AssignmentSubmission {
+  id               Int @id @default(autoincrement()) @map("submission_id")
+  courseId         Int @map("course_id")
+  assignmentId     Int @map("assignment_id")
+  studentId        Int @map("student_id")
+  s3Key            String @map("s3_key")
+  originalFilename String @map("original_filename")
+  submittedAt      DateTime @default(now()) @map("submitted_at") @db.Timestamptz
+  course           Course @relation(fields: [courseId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  assignment       Assignment @relation(fields: [courseId, assignmentId], references: [courseId, id], onDelete: Cascade, onUpdate: NoAction)
+  student          User @relation(fields: [studentId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@unique([courseId, assignmentId, studentId], map: "assignment_submissions_course_id_assignment_id_student_id_key")
+  @@map("assignment_submissions")
+  @@schema("learnflow")
+}
+
+// Track PDF extraction jobs and retry attempts.
+model ExtractionJob {
+  id          Int @id @default(autoincrement()) @map("job_id")
+  courseId    Int @map("course_id")
+  resourceId  Int @map("resource_id")
+  status      String @default("pending")
+  attempts    Int @default(0)
+  maxAttempts Int @default(3) @map("max_attempts")
+  lastError   String? @map("last_error")
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz
+  startedAt   DateTime? @map("started_at") @db.Timestamptz
+  finishedAt  DateTime? @map("finished_at") @db.Timestamptz
+  course      Course @relation(fields: [courseId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  resource    LearningResource @relation(fields: [courseId, resourceId], references: [courseId, id], onDelete: Cascade, onUpdate: NoAction)
+
+  // The queue's partial index is preserved in migration SQL.
+  @@index([courseId, resourceId], map: "extraction_jobs_resource_idx")
+  @@map("extraction_jobs")
+  @@schema("learnflow")
+}

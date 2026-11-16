@@ -1,0 +1,6 @@
+node_modules
+generated
+.npm-cache
+.env
+.git
+coverage
