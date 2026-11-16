@@ -1,18 +1,6 @@
--- LearnFlow single-schema alternative (PostgreSQL 15+).
--- Run once in a fresh database instead of the shared + per-course schema scripts.
--- This is a standalone design, not a migration of existing course schemas.
--- All course data shares tables in learnflow; no per-course schema creation is needed.
--- Backend authorization must check active accounts, must_change_password, membership,
--- course roles, ownership, and visibility before every read or write.
--- Archived courses are admin-only and read-only; enforce this in backend middleware.
--- Always filter course-owned queries by the authorized course_id, including ID lookups.
--- Composite foreign keys enforce course consistency, not caller authorization.
--- Keep enrollments independent of content ownership so unenrollment preserves history.
--- Quiz status controls draft/published/closed; is_visible controls listing visibility.
--- Answer keys are private; enforce result release and attempt limits in the backend.
--- Admin provisioning stores only a salted hash of the random temporary password.
--- Password change clears must_change_password and deletes all user sessions atomically.
--- Provision the initial administrator outside the API; never store plaintext passwords.
+-- Define the LearnFlow single-schema database for PostgreSQL 18.
+-- Scope course operations by authorized course_id and enforce permissions in the backend.
+-- Authentication and file processing are integrated separately.
 BEGIN;
 CREATE SCHEMA learnflow;
 
@@ -236,12 +224,4 @@ CREATE TRIGGER learning_resources_updated_at BEFORE UPDATE ON learnflow.learning
 
 COMMIT;
 
--- Course-scoped PDF search ($1 = course ID, $2 = search text).
--- Apply membership and resource visibility/ownership permissions before returning results.
--- SELECT p.resource_id, p.page_number,
---        ts_headline('english', p.extracted_text, websearch_to_tsquery('english', $2)) AS snippet
--- FROM learnflow.resource_pages AS p
--- JOIN learnflow.learning_resources AS r USING (course_id, resource_id)
--- WHERE p.course_id = $1 AND r.is_visible
---   AND p.search_vector @@ websearch_to_tsquery('english', $2)
--- ORDER BY ts_rank(p.search_vector, websearch_to_tsquery('english', $2)) DESC;
+-- Scope PDF search by course and apply resource visibility permissions before returning results.
