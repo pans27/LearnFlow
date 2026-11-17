@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import adminRoutes from './routes/admin';
+import authRoutes from './routes/auth';
 import courseRoutes from './routes/courses';
 import type { HealthResponse } from './types';
 
@@ -10,12 +11,12 @@ router.get<{}, HealthResponse>('/health', (_req, res) => {
   res.json({ status: 'ok' });
 });
 
+router.use('/auth', authRoutes);
 router.use('/admin', adminRoutes);
 router.use('/courses', courseRoutes);
 
 // TODO: Add course-member routes for announcements, quizzes, submissions, search.
 // TODO(file owner): integrate authorized storage/extraction operations.
 // See ../../learnflow-openapi.yaml for the proposed endpoint contract.
-// Add authentication and course authorization before exposing protected routes.
 
 export default router;

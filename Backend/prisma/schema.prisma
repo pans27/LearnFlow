@@ -75,8 +75,8 @@ model Enrollment {
   @@schema("learnflow")
 }
 
-// TODO(auth owner): connect session persistence, login, password hashing/reset,
-// initial admin provisioning, CSRF protection, and session invalidation.
+// Session rows back the HttpOnly JWT cookie. Login creates a row, and logout or a
+// password change deletes rows. The cookie stores a signed session id.
 // Store persistent session data and expiration times.
 model Session {
   id          String   @id @map("session_id")

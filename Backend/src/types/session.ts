@@ -6,6 +6,7 @@ export type SessionUser = {
 };
 
 export type UserSession = {
+  sessionId?: string;
   currentUser?: SessionUser;
 };
 

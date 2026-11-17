@@ -1,4 +1,5 @@
-import { randomBytes, scrypt } from 'node:crypto';
+import { randomBytes } from 'node:crypto';
+import { hashPassword } from '../auth/password';
 import { getPrisma } from '../database';
 import type { DefaultAdminOptions, DefaultAdminResult } from '../types';
 
@@ -20,12 +21,7 @@ export function seedDefaultAdmin(options: DefaultAdminOptions = {}): Promise<Def
     if (password.length < 16 || password.length > 128) {
       throw new Error('DEFAULT_ADMIN_PASSWORD must contain 16 to 128 characters');
     }
-    const salt = randomBytes(16).toString('hex');
-    const hash = await new Promise<Buffer>((resolve, reject) => {
-      scrypt(password, salt, 64, { N: 16384, r: 8, p: 1 }, (error, key) => error ? reject(error) : resolve(key));
-    });
-    // TODO(auth owner): verify this scrypt format during login or share the final password-hashing helper.
-    const passwordHash = `scrypt$16384$8$1$${salt}$${hash.toString('hex')}`;
+    const passwordHash = await hashPassword(password);
     const user = await tx.user.create({ data: { email, name: 'Default Administrator', passwordHash,
       isAdmin: true, isActive: true, mustChangePassword: true }, select: { id: true, email: true } });
     return { ...user, created: true, temporaryPassword: password };

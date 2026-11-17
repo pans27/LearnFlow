@@ -6,7 +6,6 @@ import { handleRequest } from './handler';
 
 // Load the account identified by the current user stored in the session.
 export const requireCurrentUser: RequestHandler = handleRequest(async (req, res, next) => {
-  // TODO(auth owner): mount cookie/session middleware and set session.currentUser after login.
   const session = (req as SessionRequest).session;
   const userId = session?.currentUser?.id;
   if (typeof userId !== 'number' || !Number.isInteger(userId) || userId < 1 || userId > 2147483647) {
