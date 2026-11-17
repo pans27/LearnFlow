@@ -2,22 +2,23 @@ openapi: 3.0.3
 info:
   title: LearnFlow REST API
   version: 0.1.0
-  description: Proposed API contract based on the LearnFlow project proposal. Assignment-file submission routes
-    are optional; quiz drafts stored in PostgreSQL before final S3 archival are a suggested implementation choice.
-    All course endpoints require membership or administrator authorization; archived courses are administrator-only
-    and read-only except for administrator reactivation. All tables use the single learnflow PostgreSQL schema;
-    course-owned operations are scoped by authorized course_id. Route parameters are IDs, not schema names. Presigned
-    URLs must be short-lived and authorization-checked. Instructor and administrator restrictions are described
-    in operation text and must be implemented in middleware. Accounts are created only by administrators;
-    public registration is not supported. New accounts must replace their generated temporary password
-    on first login. While mustChangePassword is true, middleware permits only GET /api/auth/me,
-    POST /api/auth/change-password, and POST /api/auth/logout; all other protected operations return
-    403 Forbidden, including administrator operations. Check this persisted
-    user flag on every protected request. Error bodies use message Unauthorized for HTTP 401 and message Forbidden for HTTP 403. The initial administrator is provisioned outside the public API.
+  description: >-
+    LearnFlow API contract for the current Express backend and planned feature endpoints.
+    Operations marked x-implementation-status implemented are registered in the application;
+    operations marked planned are not available yet and are retained for future implementation.
+    Authentication uses the HttpOnly learnflow.sid JWT cookie backed by revocable PostgreSQL sessions.
+    Admin operations require an active administrator account with no pending password change;
+    course lists require enrollment for everyone, while individual course and dashboard reads allow membership or administrator access.
+    Archived courses are administrator-only and read-only except for reactivation.
+    IDs are positive int32 integers, all course data uses the single learnflow database schema,
+    and error bodies contain only message (Unauthorized for 401 and Forbidden for 403).
+    Temporary-password users may read their profile, log out, or change their password;
+    password changes revoke all sessions and require another login.
 servers:
 - url: http://localhost:3000
   description: Local Express API
 tags:
+- name: Health
 - name: Authentication
 - name: Administration
 - name: Courses
@@ -27,8 +28,34 @@ tags:
 - name: Quiz Submissions
 - name: Resources
 paths:
+  /api/health:
+    get:
+      x-implementation-status: implemented
+      tags: [Health]
+      operationId: get_api_health
+      summary: Check API process liveness
+      description: Returns process health without checking PostgreSQL connectivity.
+      security: []
+      responses:
+        '200':
+          description: API process is running.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Health'
+              example:
+                status: ok
+        '500':
+          description: Unexpected error; logged by the server.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                message: An unexpected error occurred
   /api/auth/change-password:
     post:
+      x-implementation-status: implemented
       tags:
       - Authentication
       operationId: post_api_auth_change_password
@@ -62,8 +89,19 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
+              example:
+                message: Unauthorized
+        '500':
+          description: Unexpected error; logged by the server.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                message: An unexpected error occurred
   /api/auth/login:
     post:
+      x-implementation-status: implemented
       tags:
       - Authentication
       operationId: post_api_auth_login
@@ -75,24 +113,13 @@ paths:
         content:
           application/json:
             schema:
-              type: object
-              properties:
-                email:
-                  type: string
-                  format: email
-                password:
-                  type: string
-                  format: password
-                  writeOnly: true
-              required:
-              - email
-              - password
+              $ref: '#/components/schemas/LoginRequest'
       responses:
         '200':
           description: Authenticated; mustChangePassword indicates whether a first-login reset is required
           headers:
             Set-Cookie:
-              description: Sets learnflow.sid as an HttpOnly session cookie; use Secure over HTTPS and SameSite protection.
+              description: Sets learnflow.sid as an HttpOnly SameSite=Lax JWT cookie, expiring after seven days; Secure in production.
               schema:
                 type: string
           content:
@@ -105,19 +132,50 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
+              example:
+                message: Unauthorized
+        '400':
+          description: Invalid login body, unknown fields, or invalid email/password length.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Unexpected error; logged by the server.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                message: An unexpected error occurred
   /api/auth/logout:
     post:
+      x-implementation-status: implemented
       tags:
       - Authentication
       operationId: post_api_auth_logout
-      description: Log out and invalidate session
-      security:
-      - sessionCookie: []
+      summary: Log out and revoke the current session
+      description: Clears the auth cookie; missing or invalid sessions are a successful no-op.
+      security: []
       responses:
         '204':
-          description: Logged out; session invalidated
+          description: Logged out; session invalidated.
+          headers:
+            Set-Cookie:
+              description: Clears the learnflow.sid cookie.
+              schema:
+                type: string
+        '500':
+          description: Unexpected error; logged by the server.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                message: An unexpected error occurred
   /api/auth/me:
     get:
+      x-implementation-status: implemented
       tags:
       - Authentication
       operationId: get_api_auth_me
@@ -138,9 +196,19 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
-
+              example:
+                message: Unauthorized
+        '500':
+          description: Unexpected error; logged by the server.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                message: An unexpected error occurred
   /api/admin/users:
     post:
+      x-implementation-status: implemented
       tags:
       - Administration
       operationId: post_api_admin_users
@@ -180,19 +248,32 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
+              example:
+                message: Unauthorized
         '403':
           description: Forbidden
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
+              example:
+                message: Forbidden
         '409':
           description: A user with this email already exists (case-insensitive)
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
+        '500':
+          description: Unexpected error; logged by the server.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                message: An unexpected error occurred
     get:
+      x-implementation-status: implemented
       tags:
       - Administration
       operationId: get_api_admin_users
@@ -209,26 +290,33 @@ paths:
                 type: array
                 items:
                   $ref: '#/components/schemas/User'
-        '400':
-          description: Invalid input
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Error'
         '401':
           description: Unauthorized
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
+              example:
+                message: Unauthorized
         '403':
           description: Forbidden
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
+              example:
+                message: Forbidden
+        '500':
+          description: Unexpected error; logged by the server.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                message: An unexpected error occurred
   /api/admin/users/{userId}:
     get:
+      x-implementation-status: implemented
       tags:
       - Administration
       operationId: get_api_admin_users_userId
@@ -257,19 +345,32 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
+              example:
+                message: Unauthorized
         '403':
           description: Forbidden
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
+              example:
+                message: Forbidden
         '404':
           description: Not found
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
+        '500':
+          description: Unexpected error; logged by the server.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                message: An unexpected error occurred
     patch:
+      x-implementation-status: implemented
       tags:
       - Administration
       operationId: patch_api_admin_users_userId
@@ -284,12 +385,7 @@ paths:
         content:
           application/json:
             schema:
-              type: object
-              properties:
-                name:
-                  type: string
-                isAdmin:
-                  type: boolean
+              $ref: '#/components/schemas/UpdateUserRequest'
       responses:
         '200':
           description: Success
@@ -309,12 +405,16 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
+              example:
+                message: Unauthorized
         '403':
           description: Forbidden
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
+              example:
+                message: Forbidden
         '404':
           description: Not found
           content:
@@ -327,8 +427,17 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
+        '500':
+          description: Unexpected error; logged by the server.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                message: An unexpected error occurred
   /api/admin/courses:
     get:
+      x-implementation-status: implemented
       tags:
       - Administration
       operationId: get_api_admin_courses
@@ -345,25 +454,32 @@ paths:
                 type: array
                 items:
                   $ref: '#/components/schemas/Course'
-        '400':
-          description: Invalid input
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Error'
         '401':
           description: Unauthorized
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
+              example:
+                message: Unauthorized
         '403':
           description: Forbidden
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
+              example:
+                message: Forbidden
+        '500':
+          description: Unexpected error; logged by the server.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                message: An unexpected error occurred
     post:
+      x-implementation-status: implemented
       tags:
       - Administration
       operationId: post_api_admin_courses
@@ -376,24 +492,7 @@ paths:
         content:
           application/json:
             schema:
-              type: object
-              additionalProperties: false
-              properties:
-                name:
-                  type: string
-                  minLength: 1
-                  maxLength: 200
-                courseCode:
-                  type: string
-                  minLength: 1
-                  maxLength: 50
-                  description: Optional course code; defaults to name when omitted.
-                description:
-                  type: string
-                  nullable: true
-                  maxLength: 10000
-              required:
-              - name
+              $ref: '#/components/schemas/CreateCourseRequest'
       responses:
         '201':
           description: The created course object, returned directly without an array or wrapper.
@@ -413,20 +512,27 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
+              example:
+                message: Unauthorized
         '403':
           description: Forbidden
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
-        '404':
-          description: Not found
+              example:
+                message: Forbidden
+        '500':
+          description: Unexpected error; logged by the server.
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
+              example:
+                message: An unexpected error occurred
   /api/admin/courses/{courseId}:
     patch:
+      x-implementation-status: implemented
       tags:
       - Administration
       operationId: patch_api_admin_courses_courseId
@@ -441,22 +547,7 @@ paths:
         content:
           application/json:
             schema:
-              type: object
-              additionalProperties: false
-              minProperties: 1
-              properties:
-                name:
-                  type: string
-                  minLength: 1
-                  maxLength: 200
-                courseCode:
-                  type: string
-                  minLength: 1
-                  maxLength: 50
-                description:
-                  type: string
-                  nullable: true
-                  maxLength: 10000
+              $ref: '#/components/schemas/UpdateCourseRequest'
       responses:
         '200':
           description: Success
@@ -476,12 +567,16 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
+              example:
+                message: Unauthorized
         '403':
           description: Forbidden
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
+              example:
+                message: Forbidden
         '404':
           description: Not found
           content:
@@ -494,8 +589,17 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
+        '500':
+          description: Unexpected error; logged by the server.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                message: An unexpected error occurred
   /api/admin/courses/{courseId}/status:
     patch:
+      x-implementation-status: implemented
       tags:
       - Administration
       operationId: patch_api_admin_courses_courseId_status
@@ -510,15 +614,7 @@ paths:
         content:
           application/json:
             schema:
-              type: object
-              properties:
-                status:
-                  type: string
-                  enum:
-                  - active
-                  - archived
-              required:
-              - status
+              $ref: '#/components/schemas/CourseStatusRequest'
       responses:
         '200':
           description: Success
@@ -538,20 +634,33 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
+              example:
+                message: Unauthorized
         '403':
           description: Forbidden
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
+              example:
+                message: Forbidden
         '404':
           description: Not found
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
+        '500':
+          description: Unexpected error; logged by the server.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                message: An unexpected error occurred
   /api/admin/courses/{courseId}/enrollments:
     get:
+      x-implementation-status: implemented
       tags:
       - Administration
       operationId: get_api_admin_courses_courseId_enrollments
@@ -582,19 +691,32 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
+              example:
+                message: Unauthorized
         '403':
           description: Forbidden
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
+              example:
+                message: Forbidden
         '404':
           description: Course not found; an empty collection returns 200 with [].
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
+        '500':
+          description: Unexpected error; logged by the server.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                message: An unexpected error occurred
     post:
+      x-implementation-status: implemented
       tags:
       - Administration
       operationId: post_api_admin_courses_courseId_enrollments
@@ -609,21 +731,7 @@ paths:
         content:
           application/json:
             schema:
-              type: object
-              properties:
-                userId:
-                  type: integer
-                  format: int32
-                  minimum: 1
-                  maximum: 2147483647
-                role:
-                  type: string
-                  enum:
-                  - student
-                  - instructor
-              required:
-              - userId
-              - role
+              $ref: '#/components/schemas/CreateEnrollmentRequest'
       responses:
         '201':
           description: Success
@@ -643,12 +751,16 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
+              example:
+                message: Unauthorized
         '403':
           description: Forbidden
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
+              example:
+                message: Forbidden
         '404':
           description: Not found
           content:
@@ -661,8 +773,17 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
+        '500':
+          description: Unexpected error; logged by the server.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                message: An unexpected error occurred
   /api/admin/courses/{courseId}/enrollments/bulk:
     post:
+      x-implementation-status: implemented
       tags:
       - Administration
       operationId: bulk_add_api_admin_course_enrollments
@@ -699,12 +820,16 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
+              example:
+                message: Unauthorized
         '403':
           description: Forbidden
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
+              example:
+                message: Forbidden
         '404':
           description: Course or any requested user was not found; no memberships were added.
           content:
@@ -725,6 +850,7 @@ paths:
                 $ref: '#/components/schemas/Error'
   /api/admin/courses/{courseId}/enrollments/bulk-remove:
     post:
+      x-implementation-status: implemented
       tags:
       - Administration
       operationId: bulk_remove_api_admin_course_enrollments
@@ -755,12 +881,16 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
+              example:
+                message: Unauthorized
         '403':
           description: Forbidden
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
+              example:
+                message: Forbidden
         '404':
           description: Course or any requested membership was not found; no memberships were removed.
           content:
@@ -781,6 +911,7 @@ paths:
                 $ref: '#/components/schemas/Error'
   /api/admin/courses/{courseId}/enrollments/{userId}:
     patch:
+      x-implementation-status: implemented
       tags:
       - Administration
       operationId: patch_api_admin_courses_courseId_enrollments_userId
@@ -796,15 +927,7 @@ paths:
         content:
           application/json:
             schema:
-              type: object
-              properties:
-                role:
-                  type: string
-                  enum:
-                  - student
-                  - instructor
-              required:
-              - role
+              $ref: '#/components/schemas/UpdateEnrollmentRequest'
       responses:
         '200':
           description: Success
@@ -824,19 +947,38 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
+              example:
+                message: Unauthorized
         '403':
           description: Forbidden
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
+              example:
+                message: Forbidden
         '404':
           description: Not found
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
+        '409':
+          description: Course is archived; reactivate before changing membership.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Unexpected error; logged by the server.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                message: An unexpected error occurred
     delete:
+      x-implementation-status: implemented
       tags:
       - Administration
       operationId: delete_api_admin_courses_courseId_enrollments_userId
@@ -862,12 +1004,16 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
+              example:
+                message: Unauthorized
         '403':
           description: Forbidden
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
+              example:
+                message: Forbidden
         '404':
           description: Not found
           content:
@@ -880,8 +1026,17 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
+        '500':
+          description: Unexpected error; logged by the server.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                message: An unexpected error occurred
   /api/courses:
     get:
+      x-implementation-status: implemented
       tags:
       - Courses
       operationId: get_api_courses
@@ -898,26 +1053,33 @@ paths:
                 type: array
                 items:
                   $ref: '#/components/schemas/AccessibleCourse'
-        '400':
-          description: Invalid input
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Error'
         '401':
           description: Unauthorized
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
+              example:
+                message: Unauthorized
         '403':
           description: Forbidden
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
+              example:
+                message: Forbidden
+        '500':
+          description: Unexpected error; logged by the server.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                message: An unexpected error occurred
   /api/courses/{courseId}:
     get:
+      x-implementation-status: implemented
       tags:
       - Courses
       operationId: get_api_courses_courseId
@@ -946,20 +1108,33 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
+              example:
+                message: Unauthorized
         '403':
           description: Forbidden
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
+              example:
+                message: Forbidden
         '404':
           description: Not found
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
+        '500':
+          description: Unexpected error; logged by the server.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                message: An unexpected error occurred
   /api/courses/{courseId}/dashboard:
     get:
+      x-implementation-status: implemented
       tags:
       - Courses
       operationId: get_api_courses_courseId_dashboard
@@ -992,24 +1167,37 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
+              example:
+                message: Unauthorized
         '403':
           description: Forbidden
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
+              example:
+                message: Forbidden
         '404':
           description: Not found
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
+        '500':
+          description: Unexpected error; logged by the server.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                message: An unexpected error occurred
   /api/courses/{courseId}/announcements:
     get:
+      x-implementation-status: planned
       tags:
       - Announcements
       operationId: get_api_courses_courseId_announcements
-      summary: List announcements
+      summary: "[Planned] List announcements"
       parameters:
       - $ref: '#/components/parameters/courseId'
       - name: limit
@@ -1060,10 +1248,11 @@ paths:
               schema:
                 $ref: '#/components/schemas/Error'
     post:
+      x-implementation-status: planned
       tags:
       - Announcements
       operationId: post_api_courses_courseId_announcements
-      summary: Publish announcement
+      summary: "[Planned] Publish announcement"
       parameters:
       - $ref: '#/components/parameters/courseId'
       security:
@@ -1115,10 +1304,11 @@ paths:
                 $ref: '#/components/schemas/Error'
   /api/courses/{courseId}/announcements/{announcementId}:
     get:
+      x-implementation-status: planned
       tags:
       - Announcements
       operationId: get_api_courses_courseId_announcements_announcementId
-      summary: Get announcement
+      summary: "[Planned] Get announcement"
       parameters:
       - $ref: '#/components/parameters/courseId'
       - $ref: '#/components/parameters/announcementId'
@@ -1156,10 +1346,11 @@ paths:
               schema:
                 $ref: '#/components/schemas/Error'
     patch:
+      x-implementation-status: planned
       tags:
       - Announcements
       operationId: patch_api_courses_courseId_announcements_announcementId
-      summary: Edit announcement
+      summary: "[Planned] Edit announcement"
       parameters:
       - $ref: '#/components/parameters/courseId'
       - $ref: '#/components/parameters/announcementId'
@@ -1208,10 +1399,11 @@ paths:
               schema:
                 $ref: '#/components/schemas/Error'
     delete:
+      x-implementation-status: planned
       tags:
       - Announcements
       operationId: delete_api_courses_courseId_announcements_announcementId
-      summary: Delete announcement
+      summary: "[Planned] Delete announcement"
       parameters:
       - $ref: '#/components/parameters/courseId'
       - $ref: '#/components/parameters/announcementId'
@@ -1246,10 +1438,11 @@ paths:
                 $ref: '#/components/schemas/Error'
   /api/courses/{courseId}/assignments:
     get:
+      x-implementation-status: planned
       tags:
       - Assignments
       operationId: get_api_courses_courseId_assignments
-      summary: List assignments
+      summary: "[Planned] List assignments"
       parameters:
       - $ref: '#/components/parameters/courseId'
       security:
@@ -1288,10 +1481,11 @@ paths:
               schema:
                 $ref: '#/components/schemas/Error'
     post:
+      x-implementation-status: planned
       tags:
       - Assignments
       operationId: post_api_courses_courseId_assignments
-      summary: Create assignment
+      summary: "[Planned] Create assignment"
       parameters:
       - $ref: '#/components/parameters/courseId'
       security:
@@ -1345,10 +1539,11 @@ paths:
                 $ref: '#/components/schemas/Error'
   /api/courses/{courseId}/assignments/{assignmentId}:
     get:
+      x-implementation-status: planned
       tags:
       - Assignments
       operationId: get_api_courses_courseId_assignments_assignmentId
-      summary: Get assignment
+      summary: "[Planned] Get assignment"
       parameters:
       - $ref: '#/components/parameters/courseId'
       - $ref: '#/components/parameters/assignmentId'
@@ -1386,10 +1581,11 @@ paths:
               schema:
                 $ref: '#/components/schemas/Error'
     patch:
+      x-implementation-status: planned
       tags:
       - Assignments
       operationId: patch_api_courses_courseId_assignments_assignmentId
-      summary: Update assignment
+      summary: "[Planned] Update assignment"
       parameters:
       - $ref: '#/components/parameters/courseId'
       - $ref: '#/components/parameters/assignmentId'
@@ -1441,10 +1637,11 @@ paths:
               schema:
                 $ref: '#/components/schemas/Error'
     delete:
+      x-implementation-status: planned
       tags:
       - Assignments
       operationId: delete_api_courses_courseId_assignments_assignmentId
-      summary: Delete assignment
+      summary: "[Planned] Delete assignment"
       parameters:
       - $ref: '#/components/parameters/courseId'
       - $ref: '#/components/parameters/assignmentId'
@@ -1479,10 +1676,11 @@ paths:
                 $ref: '#/components/schemas/Error'
   /api/courses/{courseId}/assignments/{assignmentId}/submissions:
     post:
+      x-implementation-status: planned
       tags:
       - Assignments
       operationId: post_api_courses_courseId_assignments_assignmentId_submissions
-      summary: Upload assignment submission
+      summary: "[Planned] Upload assignment submission"
       description: ' Optional scope: implement only if assignment file submissions are included.'
       parameters:
       - $ref: '#/components/parameters/courseId'
@@ -1541,10 +1739,11 @@ paths:
               schema:
                 $ref: '#/components/schemas/Error'
     get:
+      x-implementation-status: planned
       tags:
       - Assignments
       operationId: get_api_courses_courseId_assignments_assignmentId_submissions
-      summary: List assignment submissions
+      summary: "[Planned] List assignment submissions"
       description: ' Optional scope: implement only if assignment file submissions are included.'
       parameters:
       - $ref: '#/components/parameters/courseId'
@@ -1599,10 +1798,11 @@ paths:
                 $ref: '#/components/schemas/Error'
   /api/courses/{courseId}/assignments/{assignmentId}/submissions/me:
     get:
+      x-implementation-status: planned
       tags:
       - Assignments
       operationId: get_api_courses_courseId_assignments_assignmentId_submissions_me
-      summary: Get own assignment submission
+      summary: "[Planned] Get own assignment submission"
       description: ' Optional scope: implement only if assignment file submissions are included.'
       parameters:
       - $ref: '#/components/parameters/courseId'
@@ -1650,10 +1850,11 @@ paths:
                 $ref: '#/components/schemas/Error'
   /api/courses/{courseId}/assignments/{assignmentId}/submissions/{submissionId}/download:
     get:
+      x-implementation-status: planned
       tags:
       - Assignments
       operationId: get_api_courses_courseId_assignments_assignmentId_submissions_submissionId_download
-      summary: Get assignment submission download URL
+      summary: "[Planned] Get assignment submission download URL"
       description: ' Optional scope: implement only if assignment file submissions are included.'
       parameters:
       - $ref: '#/components/parameters/courseId'
@@ -1694,10 +1895,11 @@ paths:
                 $ref: '#/components/schemas/Error'
   /api/courses/{courseId}/quizzes:
     get:
+      x-implementation-status: planned
       tags:
       - Quizzes
       operationId: get_api_courses_courseId_quizzes
-      summary: List quizzes
+      summary: "[Planned] List quizzes"
       parameters:
       - $ref: '#/components/parameters/courseId'
       security:
@@ -1736,10 +1938,11 @@ paths:
               schema:
                 $ref: '#/components/schemas/Error'
     post:
+      x-implementation-status: planned
       tags:
       - Quizzes
       operationId: post_api_courses_courseId_quizzes
-      summary: Create quiz
+      summary: "[Planned] Create quiz"
       description: Instructor-only for mutations and statistics; never expose correct answers to students before
         results are released.
       parameters:
@@ -1795,10 +1998,11 @@ paths:
                 $ref: '#/components/schemas/Error'
   /api/courses/{courseId}/quizzes/{quizId}:
     get:
+      x-implementation-status: planned
       tags:
       - Quizzes
       operationId: get_api_courses_courseId_quizzes_quizId
-      summary: Get quiz with permitted question data
+      summary: "[Planned] Get quiz with permitted question data"
       parameters:
       - $ref: '#/components/parameters/courseId'
       - $ref: '#/components/parameters/quizId'
@@ -1836,10 +2040,11 @@ paths:
               schema:
                 $ref: '#/components/schemas/Error'
     patch:
+      x-implementation-status: planned
       tags:
       - Quizzes
       operationId: patch_api_courses_courseId_quizzes_quizId
-      summary: Update quiz settings or visibility
+      summary: "[Planned] Update quiz settings or visibility"
       description: Instructor-only for mutations and statistics; never expose correct answers to students before
         results are released.
       parameters:
@@ -1899,10 +2104,11 @@ paths:
               schema:
                 $ref: '#/components/schemas/Error'
     delete:
+      x-implementation-status: planned
       tags:
       - Quizzes
       operationId: delete_api_courses_courseId_quizzes_quizId
-      summary: Delete quiz
+      summary: "[Planned] Delete quiz"
       description: Instructor-only for mutations and statistics; never expose correct answers to students before
         results are released.
       parameters:
@@ -1939,10 +2145,11 @@ paths:
                 $ref: '#/components/schemas/Error'
   /api/courses/{courseId}/quizzes/{quizId}/questions:
     post:
+      x-implementation-status: planned
       tags:
       - Quizzes
       operationId: post_api_courses_courseId_quizzes_quizId_questions
-      summary: Add quiz question
+      summary: "[Planned] Add quiz question"
       description: Instructor-only for mutations and statistics; never expose correct answers to students before
         results are released.
       parameters:
@@ -2004,10 +2211,11 @@ paths:
                 $ref: '#/components/schemas/Error'
   /api/courses/{courseId}/quizzes/{quizId}/questions/{questionId}:
     patch:
+      x-implementation-status: planned
       tags:
       - Quizzes
       operationId: patch_api_courses_courseId_quizzes_quizId_questions_questionId
-      summary: Edit quiz question
+      summary: "[Planned] Edit quiz question"
       description: Instructor-only for mutations and statistics; never expose correct answers to students before
         results are released.
       parameters:
@@ -2064,10 +2272,11 @@ paths:
               schema:
                 $ref: '#/components/schemas/Error'
     delete:
+      x-implementation-status: planned
       tags:
       - Quizzes
       operationId: delete_api_courses_courseId_quizzes_quizId_questions_questionId
-      summary: Delete quiz question
+      summary: "[Planned] Delete quiz question"
       description: Instructor-only for mutations and statistics; never expose correct answers to students before
         results are released.
       parameters:
@@ -2105,10 +2314,11 @@ paths:
                 $ref: '#/components/schemas/Error'
   /api/courses/{courseId}/quizzes/{quizId}/statistics:
     get:
+      x-implementation-status: planned
       tags:
       - Quizzes
       operationId: get_api_courses_courseId_quizzes_quizId_statistics
-      summary: Get quiz submission and grading statistics
+      summary: "[Planned] Get quiz submission and grading statistics"
       description: Instructor-only for mutations and statistics; never expose correct answers to students before
         results are released.
       parameters:
@@ -2149,10 +2359,11 @@ paths:
                 $ref: '#/components/schemas/Error'
   /api/courses/{courseId}/quizzes/{quizId}/submissions:
     post:
+      x-implementation-status: planned
       tags:
       - Quiz Submissions
       operationId: post_api_courses_courseId_quizzes_quizId_submissions
-      summary: Start quiz draft
+      summary: "[Planned] Start quiz draft"
       parameters:
       - $ref: '#/components/parameters/courseId'
       - $ref: '#/components/parameters/quizId'
@@ -2197,10 +2408,11 @@ paths:
               schema:
                 $ref: '#/components/schemas/Error'
     get:
+      x-implementation-status: planned
       tags:
       - Quiz Submissions
       operationId: get_api_courses_courseId_quizzes_quizId_submissions
-      summary: List quiz submissions for instructor
+      summary: "[Planned] List quiz submissions for instructor"
       parameters:
       - $ref: '#/components/parameters/courseId'
       - $ref: '#/components/parameters/quizId'
@@ -2241,10 +2453,11 @@ paths:
                 $ref: '#/components/schemas/Error'
   /api/courses/{courseId}/quizzes/{quizId}/submissions/me:
     get:
+      x-implementation-status: planned
       tags:
       - Quiz Submissions
       operationId: get_api_courses_courseId_quizzes_quizId_submissions_me
-      summary: Get own draft or attempt
+      summary: "[Planned] Get own draft or attempt"
       parameters:
       - $ref: '#/components/parameters/courseId'
       - $ref: '#/components/parameters/quizId'
@@ -2283,10 +2496,11 @@ paths:
                 $ref: '#/components/schemas/Error'
   /api/courses/{courseId}/quizzes/{quizId}/submissions/{submissionId}:
     patch:
+      x-implementation-status: planned
       tags:
       - Quiz Submissions
       operationId: patch_api_courses_courseId_quizzes_quizId_submissions_submissionId
-      summary: Save draft answers
+      summary: "[Planned] Save draft answers"
       parameters:
       - $ref: '#/components/parameters/courseId'
       - $ref: '#/components/parameters/quizId'
@@ -2349,10 +2563,11 @@ paths:
                 $ref: '#/components/schemas/Error'
   /api/courses/{courseId}/quizzes/{quizId}/submissions/{submissionId}/submit:
     post:
+      x-implementation-status: planned
       tags:
       - Quiz Submissions
       operationId: post_api_courses_courseId_quizzes_quizId_submissions_submissionId_submit
-      summary: Finalize quiz submission
+      summary: "[Planned] Finalize quiz submission"
       parameters:
       - $ref: '#/components/parameters/courseId'
       - $ref: '#/components/parameters/quizId'
@@ -2399,10 +2614,11 @@ paths:
                 $ref: '#/components/schemas/Error'
   /api/courses/{courseId}/quizzes/{quizId}/submissions/{submissionId}/result:
     get:
+      x-implementation-status: planned
       tags:
       - Quiz Submissions
       operationId: get_api_courses_courseId_quizzes_quizId_submissions_submissionId_result
-      summary: View authorized submission result
+      summary: "[Planned] View authorized submission result"
       parameters:
       - $ref: '#/components/parameters/courseId'
       - $ref: '#/components/parameters/quizId'
@@ -2442,10 +2658,11 @@ paths:
                 $ref: '#/components/schemas/Error'
   /api/courses/{courseId}/quizzes/{quizId}/submissions/{submissionId}/grade:
     patch:
+      x-implementation-status: planned
       tags:
       - Quiz Submissions
       operationId: patch_api_courses_courseId_quizzes_quizId_submissions_submissionId_grade
-      summary: Grade submission
+      summary: "[Planned] Grade submission"
       parameters:
       - $ref: '#/components/parameters/courseId'
       - $ref: '#/components/parameters/quizId'
@@ -2498,10 +2715,11 @@ paths:
                 $ref: '#/components/schemas/Error'
   /api/courses/{courseId}/resources:
     get:
+      x-implementation-status: planned
       tags:
       - Resources
       operationId: get_api_courses_courseId_resources
-      summary: List course resources
+      summary: "[Planned] List course resources"
       parameters:
       - $ref: '#/components/parameters/courseId'
       - name: limit
@@ -2555,10 +2773,11 @@ paths:
               schema:
                 $ref: '#/components/schemas/Error'
     post:
+      x-implementation-status: planned
       tags:
       - Resources
       operationId: post_api_courses_courseId_resources
-      summary: Upload PDF resource
+      summary: "[Planned] Upload PDF resource"
       parameters:
       - $ref: '#/components/parameters/courseId'
       security:
@@ -2622,10 +2841,11 @@ paths:
                 $ref: '#/components/schemas/Error'
   /api/courses/{courseId}/resources/search:
     get:
+      x-implementation-status: planned
       tags:
       - Resources
       operationId: get_api_courses_courseId_resources_search
-      summary: Search PDF contents in course
+      summary: "[Planned] Search PDF contents in course"
       parameters:
       - $ref: '#/components/parameters/courseId'
       - name: q
@@ -2671,10 +2891,11 @@ paths:
                 $ref: '#/components/schemas/Error'
   /api/courses/{courseId}/resources/{resourceId}:
     get:
+      x-implementation-status: planned
       tags:
       - Resources
       operationId: get_api_courses_courseId_resources_resourceId
-      summary: Get resource and extraction status
+      summary: "[Planned] Get resource and extraction status"
       parameters:
       - $ref: '#/components/parameters/courseId'
       - $ref: '#/components/parameters/resourceId'
@@ -2712,10 +2933,11 @@ paths:
               schema:
                 $ref: '#/components/schemas/Error'
     patch:
+      x-implementation-status: planned
       tags:
       - Resources
       operationId: patch_api_courses_courseId_resources_resourceId
-      summary: Update resource metadata or visibility
+      summary: "[Planned] Update resource metadata or visibility"
       parameters:
       - $ref: '#/components/parameters/courseId'
       - $ref: '#/components/parameters/resourceId'
@@ -2769,10 +2991,11 @@ paths:
               schema:
                 $ref: '#/components/schemas/Error'
     delete:
+      x-implementation-status: planned
       tags:
       - Resources
       operationId: delete_api_courses_courseId_resources_resourceId
-      summary: Delete resource
+      summary: "[Planned] Delete resource"
       parameters:
       - $ref: '#/components/parameters/courseId'
       - $ref: '#/components/parameters/resourceId'
@@ -2807,10 +3030,11 @@ paths:
                 $ref: '#/components/schemas/Error'
   /api/courses/{courseId}/resources/{resourceId}/preview:
     get:
+      x-implementation-status: planned
       tags:
       - Resources
       operationId: get_api_courses_courseId_resources_resourceId_preview
-      summary: Get S3 preview presigned URL
+      summary: "[Planned] Get S3 preview presigned URL"
       parameters:
       - $ref: '#/components/parameters/courseId'
       - $ref: '#/components/parameters/resourceId'
@@ -2849,10 +3073,11 @@ paths:
                 $ref: '#/components/schemas/Error'
   /api/courses/{courseId}/resources/{resourceId}/download:
     get:
+      x-implementation-status: planned
       tags:
       - Resources
       operationId: get_api_courses_courseId_resources_resourceId_download
-      summary: Get S3 download presigned URL
+      summary: "[Planned] Get S3 download presigned URL"
       parameters:
       - $ref: '#/components/parameters/courseId'
       - $ref: '#/components/parameters/resourceId'
@@ -2971,6 +3196,108 @@ components:
       description: HttpOnly HS256 JWT cookie backed by a revocable PostgreSQL session. Protect cookie-authenticated
         mutations against CSRF.
   schemas:
+    UpdateEnrollmentRequest:
+      type: "object"
+      additionalProperties: false
+      properties:
+        role:
+          type: "string"
+          enum: ["student","instructor"]
+      required: ["role"]
+    CreateEnrollmentRequest:
+      type: "object"
+      additionalProperties: false
+      properties:
+        userId:
+          type: "integer"
+          format: "int32"
+          minimum: 1
+          maximum: 2147483647
+        role:
+          type: "string"
+          enum: ["student","instructor"]
+      required: ["userId","role"]
+    CourseStatusRequest:
+      type: "object"
+      additionalProperties: false
+      properties:
+        status:
+          type: "string"
+          enum: ["active","archived"]
+      required: ["status"]
+    UpdateCourseRequest:
+      type: "object"
+      additionalProperties: false
+      minProperties: 1
+      properties:
+        name:
+          type: "string"
+          minLength: 1
+          maxLength: 200
+          description: "Trimmed before validation; whitespace-only values are rejected."
+        courseCode:
+          type: "string"
+          minLength: 1
+          maxLength: 50
+        description:
+          type: "string"
+          nullable: true
+          maxLength: 10000
+    CreateCourseRequest:
+      type: "object"
+      additionalProperties: false
+      properties:
+        name:
+          type: "string"
+          minLength: 1
+          maxLength: 200
+          description: "Trimmed before validation; whitespace-only values are rejected."
+        courseCode:
+          type: "string"
+          minLength: 1
+          maxLength: 50
+          description: "Defaults to name when omitted."
+        description:
+          type: "string"
+          nullable: true
+          maxLength: 10000
+      required: ["name"]
+    UpdateUserRequest:
+      type: "object"
+      additionalProperties: false
+      minProperties: 1
+      properties:
+        name:
+          type: "string"
+          minLength: 1
+          maxLength: 200
+          description: "Trimmed before validation; whitespace-only values are rejected."
+        isAdmin:
+          type: "boolean"
+    LoginRequest:
+      type: "object"
+      additionalProperties: false
+      properties:
+        email:
+          type: "string"
+          format: "email"
+          maxLength: 320
+          description: "Trimmed and normalized to lowercase."
+        password:
+          type: "string"
+          format: "password"
+          writeOnly: true
+          minLength: 1
+          maxLength: 128
+      required: ["email","password"]
+    Health:
+      type: "object"
+      additionalProperties: false
+      properties:
+        status:
+          type: "string"
+          enum: ["ok"]
+      required: ["status"]
     Error:
       type: object
       additionalProperties: false
@@ -2998,28 +3325,25 @@ components:
           type: boolean
           readOnly: true
           description: True until the user replaces the administrator-generated temporary password.
-      required:
-      - id
-      - email
-      - isAdmin
-      - mustChangePassword
+      required: ["id", "name", "email", "isAdmin", "mustChangePassword"]
     CreateUserRequest:
-      type: object
+      type: "object"
       additionalProperties: false
       properties:
         name:
-          type: string
+          type: "string"
           minLength: 1
+          maxLength: 200
+          description: "Trimmed before validation; whitespace-only values are rejected."
         email:
-          type: string
-          format: email
+          type: "string"
+          format: "email"
+          maxLength: 320
+          description: "Trimmed and normalized to lowercase."
         isAdmin:
-          type: boolean
+          type: "boolean"
           default: false
-          description: Global administrator status; student and instructor roles are assigned per course.
-      required:
-      - name
-      - email
+      required: ["name","email"]
     CreateUserResponse:
       type: object
       additionalProperties: false
@@ -3036,24 +3360,23 @@ components:
       - user
       - temporaryPassword
     ChangePasswordRequest:
-      type: object
+      type: "object"
       additionalProperties: false
       properties:
         currentPassword:
-          type: string
-          format: password
+          type: "string"
+          format: "password"
           writeOnly: true
-          description: Temporary password on first login; current password for subsequent changes.
+          minLength: 1
+          maxLength: 128
         newPassword:
-          type: string
-          format: password
+          type: "string"
+          format: "password"
+          writeOnly: true
           minLength: 12
           maxLength: 128
-          writeOnly: true
-          description: Must be 12 to 128 characters and differ from the current password.
-      required:
-      - currentPassword
-      - newPassword
+          description: "Must differ from the current password."
+      required: ["currentPassword","newPassword"]
     Course:
       type: object
       example:
@@ -3085,11 +3408,9 @@ components:
           enum:
           - instructor
           - student
+          - null
           nullable: true
-      required:
-      - id
-      - name
-      - status
+      required: ["id", "name", "courseCode", "description", "status"]
     BulkEnrollmentRequest:
       type: object
       additionalProperties: false
@@ -3376,7 +3697,7 @@ components:
           role:
             type: string
             nullable: true
-            enum: [student, instructor]
+            enum: [student, instructor, null]
             description: Current user's course role, or null for an administrator without membership.
     Dashboard:
       type: object
