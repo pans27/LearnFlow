@@ -1,4 +1,6 @@
-import type { LockedCourse, CourseCreateData, CourseUpdateData, UserUpdateData, CourseStatus, CourseRole, BulkEnrollmentData, BulkRemovalData } from '../types';
+import type { LockedCourse, CourseCreateData, CourseUpdateData, UserUpdateData, UserCreateData, CourseStatus, CourseRole, BulkEnrollmentData, BulkRemovalData } from '../types';
+import { randomBytes } from 'node:crypto';
+import { hashPassword } from '../auth/password';
 import { adminDb as database } from '../db/admin';
 import { HttpError } from '../errors';
 
@@ -8,6 +10,12 @@ function requireActive(course: LockedCourse) {
 }
 
 export const adminService = {
+  // Provision an account with a generated temporary password and the shared auth hash format.
+  async createUser(data: UserCreateData) {
+    const temporaryPassword = randomBytes(24).toString('base64url');
+    const user = await database.createUser(data, await hashPassword(temporaryPassword));
+    return { user, temporaryPassword };
+  },
 
   // Add all memberships to an active course in one transaction.
   createEnrollments(courseId: number, data: BulkEnrollmentData) {

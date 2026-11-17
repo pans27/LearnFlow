@@ -4,6 +4,26 @@ Express 5, TypeScript, Prisma 7, and PostgreSQL 18. Node.js 24 and dependency
 version ranges match the corresponding packages in `assignment 2`; `package-lock.json`
 locks the installed versions for teammates.
 
+## Endpoint status
+
+The tables below list the endpoints currently registered by the Express app.
+The [OpenAPI document](../learnflow-openapi.yaml) also describes planned endpoints
+that are not implemented yet.
+
+| Area | Current state |
+| --- | --- |
+| Health | Implemented: `GET /api/health` returns 200 with `{"status":"ok"}` |
+| Authentication | Implemented: login, current user, logout, and password change |
+| Administration | Implemented: user provisioning/updates, courses, and single/bulk enrollment management |
+| User courses | Implemented: enrolled-course list, course detail, and role-aware dashboard |
+| Announcements | Database and dashboard summaries exist; standalone endpoints are not implemented |
+| Assignments and quizzes | Database and dashboard summaries exist; standalone assessment endpoints are not implemented |
+| Submissions and grading | Database and dashboard statistics exist; standalone endpoints are not implemented |
+| Resources and PDF search | Database and dashboard metadata exist; upload, extraction, search, preview, and download endpoints are not implemented |
+
+The health endpoint checks process liveness; use `npm run db:check` to check the
+database connection.
+
 ## Launch with Docker
 
 Start Docker Desktop, then run from `Backend`:
@@ -66,8 +86,8 @@ changing that account.
 Optional `DEFAULT_ADMIN_EMAIL` and `DEFAULT_ADMIN_PASSWORD` environment variables
 override creation values; the password must contain 16–128 characters. Only a
 salted hash is stored, with `isAdmin=true`, `isActive=true`, and
-`mustChangePassword=true`. Login and required password replacement still await
-the authentication owner's implementation.
+`mustChangePassword=true`. Login and the required first-login password replacement are implemented through
+the auth endpoints.
 
 The seed hash format is `scrypt$16384$8$1$<salt-hex>$<key-hex>`, using Node's
 `scrypt` with N=16384, r=8, p=1, and a 64-byte key. Pass the salt's hex text as the
@@ -118,7 +138,7 @@ The flow is router -> admin filter -> validation -> controller -> service -> dat
 | --- | --- |
 | `src/types/` | Domain files for courses, users, enrollments, shared responses, and validation locals |
 | `src/routes/admin.ts` | Wire method/path to middleware and controller |
-| `src/middleware/admin.ts` | Call `next()` as a placeholder for the auth owner's filter |
+| `src/middleware/admin.ts` | Require the signed-in account's current administrator permission |
 | `src/validation/admin.ts` | Parse IDs and allowlisted request fields; reject malformed input |
 | `src/middleware/validation.ts` | Put validated IDs/body in request-local response locals |
 | `src/controllers/admin.ts` | Call services, choose HTTP status, serialize response DTOs |
@@ -138,14 +158,37 @@ Course writes lock the course row before checking status, so archiving cannot
 race with an enrollment or metadata update. Admin-status changes are serialized
 to prevent concurrent demotions from removing every active administrator.
 
-## Admin endpoints implemented
+## Auth endpoints
 
-All paths below begin with `/api/admin`; the placeholder auth filter currently
-allows every request through by calling `next()`.
+| Method | Path | Request and behavior | Success response |
+| --- | --- | --- | --- |
+| POST | `/api/auth/login` | Accept `email` and `password`; validate an active account and set the `learnflow.sid` cookie | 200 with the public user object |
+| GET | `/api/auth/me` | Return the account identified by the verified session, including during a required password reset | 200 with the public user object |
+| POST | `/api/auth/logout` | Revoke the current session and clear the cookie; repeated or unauthenticated logout is allowed | 204 without a body |
+| POST | `/api/auth/change-password` | Accept `currentPassword` and `newPassword`; replace the password, clear `mustChangePassword`, revoke all user sessions, and clear the cookie | 204 without a body |
+
+Login and profile responses contain `id`, `name`, `email`, `isAdmin`, and
+`mustChangePassword`; password hashes and JWTs are not returned in the JSON body.
+Send the cookie on subsequent requests. Browser fetch calls from a separate
+frontend origin must include credentials and require matching server CORS setup.
+
+The first-login flow is: log in with the temporary password, call
+`/api/auth/change-password`, and log in again with the replacement password.
+While `mustChangePassword` is true, only profile, logout, and password change are
+available to that session; admin and course endpoints return 403.
+New passwords must contain 12-128 characters and differ from the current password.
+Malformed bodies and incorrect current passwords return 400; invalid login or
+session credentials return 401 with `{"message":"Unauthorized"}`.
+
+## Admin endpoints
+
+All paths below begin with `/api/admin` and require a live session, an active
+account, a completed password reset, and administrator permission.
 
 | Method | Path | Behavior |
 | --- | --- | --- |
 | GET | `/users` | List public user fields, never password hashes |
+| POST | `/users` | Provision an account and return its generated temporary password once |
 | GET | `/users/:userId` | Get a user |
 | PATCH | `/users/:userId` | Update `name` and/or `isAdmin`; protect the last active admin |
 | GET | `/courses` | List active and archived courses |
@@ -166,6 +209,12 @@ Duplicate enrollments return 409. Missing courses/users/memberships return 404.
 Bodies reject unknown fields, empty updates, and incorrectly typed values.
 See `../learnflow-openapi.yaml` for request/response shapes.
 Errors use the HTTP response status and a JSON body containing only `message`.
+
+User provisioning accepts `name`, `email`, and optional `isAdmin` (default false).
+It returns HTTP 201 with `{ "user": { ... }, "temporaryPassword": "..." }` and
+`Cache-Control: no-store`. The password is generated by the server, stored only
+as a salted hash, and must be replaced on first login. Caller-supplied passwords
+are rejected; duplicate emails return 409, including case-insensitive matches.
 
 Course creation returns HTTP 201 with the course object directly:
 
@@ -198,18 +247,32 @@ middleware respond to expected failures locally; unexpected errors reach
 | GET | `/api/courses/:courseId` | Get course metadata and the current user's course role |
 | GET | `/api/courses/:courseId/dashboard` | Get recent updates and a student/instructor dashboard |
 
-The authentication owner should mount session-cookie middleware before the API
-routes and store `req.session.currentUser = { id: user.id }` after login.
-`src/middleware/current-user.ts` assumes that session already exists, loads the
-account from PostgreSQL, and sets `res.locals.currentUser`. Missing/inactive
+`src/middleware/session.ts` reads the `learnflow.sid` HttpOnly JWT cookie,
+verifies its signature and expiry, and checks its backing PostgreSQL session.
+It sets `req.session = { sessionId, currentUser: { id } }` only for a valid session.
+`src/middleware/current-user.ts` reloads the account from PostgreSQL and sets
+`res.locals.currentUser`. Missing/inactive
 accounts return 401; accounts requiring a password change return 403.
 Error messages are always `Unauthorized` for 401 and `Forbidden` for 403.
-Cookie parsing, session verification, login, and the session store remain TODOs; no ID
-is taken from an unverified request header, query parameter, or body.
+No ID is taken from an unverified request header, query parameter, or body.
+Logout revokes the current session; password changes revoke all sessions for the
+account. Administrator status and password-change flags are rechecked on every
+protected request, so a valid cookie cannot retain removed privileges.
+
+Use `POST /api/auth/login`, `GET /api/auth/me`, `POST /api/auth/logout`, and
+`POST /api/auth/change-password` for the login flow. A temporary-password login
+can access profile, logout, and password change, but cannot access admin/course
+routes until the password is replaced and the user logs in again.
+Set `JWT_SECRET` to at least 32 characters in production; development uses a
+local fallback. Auth cookies use HttpOnly, SameSite=Lax, and Secure in production.
 
 Course access is checked against current enrollments. Regular users cannot read
 archived courses; administrators can read them with `readOnly: true`. A user's
 `role` is null when an administrator accesses a course without enrollment.
+`GET /api/courses` requires enrollment even for administrators; the admin course
+list is the endpoint for viewing every course. Specific course and dashboard
+reads require enrollment or administrator permission, otherwise they return
+403 with `{"message":"Forbidden"}`. Missing courses return 404.
 
 Dashboard limits are configured in `src/constants/dashboard.ts`.
 Dashboards contain at most five recent announcements, five upcoming assessments,
@@ -237,17 +300,14 @@ grading state. Archived dashboards disable all management permissions.
 
 ## Team integration TODOs
 
-Authentication owner:
+Authentication integration:
 
-- Mount session verification and CSRF protection before the admin router.
-- Replace the `next()` placeholder with session verification and checks for
-  `isActive`, `isAdmin`, and `mustChangePassword` on every admin request.
-- Implement login/logout, password hashing/reset, and session invalidation.
-  The default admin seed is available above. The session table is storage groundwork, not a configured
-  Express session store; adapt the table/store together as needed.
-- Implement `POST /api/admin/users`: temporary-password generation and hashing,
-  one-time response with `Cache-Control: no-store`, and `mustChangePassword=true`.
-  The route currently returns 501 and never creates partial accounts.
+- Login, session loading, logout, password changes, and administrator checks are connected.
+- `POST /api/admin/users` uses the shared scrypt helper, returns a server-generated
+  temporary password once with `Cache-Control: no-store`, and requires a password
+  reset on first login. Caller-supplied passwords and unknown fields are rejected.
+- Keep production cookie settings and any additional CSRF policy coordinated
+  with the frontend's deployment origins.
 
 File-processing owner:
 
@@ -276,7 +336,7 @@ npm test
 
 The integration suite creates, migrates, and deletes its own uniquely named test
 database. It never clears existing application tables. Tests exercise the
-pass-through admin filter and message-only errors. Coverage
+verified JWT/database sessions, administrator authorization, and message-only errors. Coverage
 includes strict validation, enrollment conflicts, archived
 course protection, history retention, cross-course foreign keys, SQL checks,
 full-text indexing, and concurrent last-admin protection.

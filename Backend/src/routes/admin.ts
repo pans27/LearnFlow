@@ -1,15 +1,15 @@
 import { Router } from 'express';
 import { requireAdmin } from '../middleware/admin';
+import { requireCurrentUser } from '../middleware/current-user';
 import { validateIds, validateBody } from '../middleware/validation';
 import * as controller from '../controllers/admin';
 import * as validation from '../validation/admin';
 
 const router = Router();
-// TODO(auth owner): replace the pass-through admin filter with authorization.
-router.use(requireAdmin);
+router.use(requireCurrentUser, requireAdmin);
 
 router.get('/users', controller.listUsers);
-router.post('/users', controller.provisionUser);
+router.post('/users', validateBody(validation.createUserBody, 'userCreate'), controller.provisionUser);
 router.get('/users/:userId', validateIds, controller.getUser);
 router.patch('/users/:userId', validateIds, validateBody(validation.userBody, 'userData'), controller.updateUser);
 router.get('/courses', controller.listCourses);

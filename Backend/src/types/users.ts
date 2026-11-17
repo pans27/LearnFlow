@@ -10,6 +10,12 @@ export type UserUpdateData = {
   isAdmin?: boolean;
 };
 
+export type UserCreateData = {
+  name: string;
+  email: string;
+  isAdmin: boolean;
+};
+
 export type PublicUserRecord = {
   id: number;
   name: string;

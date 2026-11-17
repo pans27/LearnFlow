@@ -1,0 +1,30 @@
+import assert from 'node:assert/strict';
+import { test } from 'node:test';
+import type { Response } from 'express';
+import { loadSession } from '../src/middleware/session';
+import { config } from '../src/config';
+import { authDb } from '../src/db/auth';
+import { signAuthToken } from '../src/auth/jwt';
+import type { SessionRequest } from '../src/types';
+
+test('session loader discards unverified identity and accepts only live matching sessions', async (t) => {
+  const expiresAt = new Date(Date.now() + 60000);
+  const stored = { id: 'session-test', userId: 7, expiresAt, createdAt: new Date(), sessionData: {} };
+  const lookup = t.mock.method(authDb, 'findSession', async (): Promise<typeof stored | null> => stored);
+  const next = t.mock.fn();
+  const req = { headers: {}, session: { currentUser: { id: 99 } } } as SessionRequest;
+  await loadSession(req, {} as Response, next);
+  assert.equal(req.session, undefined);
+  assert.equal(lookup.mock.callCount(), 0);
+  const token = signAuthToken({ sid: stored.id, uid: stored.userId }, config.jwtSecret, expiresAt);
+  req.headers.cookie = `${config.authCookie}=${token}`;
+  await loadSession(req, {} as Response, next);
+  assert.deepEqual(req.session, { sessionId: stored.id, currentUser: { id: 7 } });
+  lookup.mock.mockImplementation(async () => ({ ...stored, userId: 8 }));
+  await loadSession(req, {} as Response, next);
+  assert.equal(req.session, undefined);
+  lookup.mock.mockImplementation(async () => null);
+  await loadSession(req, {} as Response, next);
+  assert.equal(req.session, undefined);
+  assert.ok(next.mock.calls.every((call) => call.arguments.length === 0));
+});

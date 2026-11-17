@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { courseBody, enrollmentBody, id, statusBody, userBody } from '../src/validation/admin';
 import { bulkEnrollmentBody, bulkRemovalBody } from '../src/validation/admin';
+import { createUserBody } from '../src/validation/admin';
 import { HttpError } from '../src/errors';
 
 // Assert that an operation raises an HTTP 400 validation error.
@@ -49,6 +50,15 @@ test('admin user updates cannot change passwords or coerce booleans', () => {
   invalid(() => userBody({ passwordHash: 'anything' }));
   // Assert that an operation raises an HTTP 400 validation error.
   invalid(() => userBody({}));
+});
+
+test('user provisioning validates account fields and rejects passwords or session data', () => {
+  assert.deepEqual(createUserBody({ name: ' Alice ', email: ' Alice@Example.test ' }),
+    { name: 'Alice', email: 'alice@example.test', isAdmin: false });
+  invalid(() => createUserBody({ name: 'Alice', email: 'not-an-email' }));
+  invalid(() => createUserBody({ name: 'Alice', email: 'alice@example.test', isAdmin: 'true' }));
+  invalid(() => createUserBody({ name: 'Alice', email: 'alice@example.test', password: 'caller-password' }));
+  invalid(() => createUserBody({ name: 'Alice', email: 'alice@example.test', session: {} }));
 });
 
 test('bulk membership bodies require bounded batches of unique valid user IDs', () => {

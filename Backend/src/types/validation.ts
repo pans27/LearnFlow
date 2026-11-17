@@ -1,5 +1,5 @@
 import type { CourseCreateData, CourseUpdateData, CourseStatus } from './courses';
-import type { UserUpdateData } from './users';
+import type { UserUpdateData, UserCreateData } from './users';
 import type { EnrollmentCreateData, EnrollmentUpdateData, BulkEnrollmentData, BulkRemovalData } from './enrollments';
 import type { CurrentUser } from './session';
 
@@ -11,6 +11,7 @@ export type ValidatedLocals = {
   courseData?: CourseCreateData;
   courseUpdate?: CourseUpdateData;
   userData?: UserUpdateData;
+  userCreate?: UserCreateData;
   enrollmentData?: EnrollmentCreateData;
   enrollmentUpdate?: EnrollmentUpdateData;
   courseStatus?: CourseStatus;
@@ -19,5 +20,5 @@ export type ValidatedLocals = {
 };
 
 export type ValidatedBodyField =
-  'courseData' | 'courseUpdate' | 'userData' |
+  'courseData' | 'courseUpdate' | 'userData' | 'userCreate' |
   'enrollmentData' | 'enrollmentUpdate' | 'courseStatus' | 'bulkEnrollments' | 'bulkRemoval';
