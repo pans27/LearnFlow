@@ -5,8 +5,9 @@ import { config } from '../config';
 import { authDb } from '../db/auth';
 import type { SessionRequest } from '../types';
 
-// Attach session.currentUser from a valid JWT cookie. Requests without the cookie are unchanged.
+// Attach session.currentUser only from a verified, unexpired JWT and database session.
 export const loadSession: RequestHandler = async (req, _res, next) => {
+  (req as SessionRequest).session = undefined;
   try {
     const token = readCookie(req, config.authCookie);
     if (!token) return next();

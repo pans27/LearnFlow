@@ -1,6 +1,6 @@
 import { HttpError } from '../errors';
 import type { CourseCreateData, CourseUpdateData, CourseStatus,
-  EnrollmentCreateData, EnrollmentUpdateData, UserUpdateData, BulkEnrollmentData, BulkRemovalData } from '../types';
+  EnrollmentCreateData, EnrollmentUpdateData, UserUpdateData, UserCreateData, BulkEnrollmentData, BulkRemovalData } from '../types';
 
 // Raise a validation error with HTTP status 400.
 function invalid(message: string): never {
@@ -86,6 +86,18 @@ export function userBody(value: unknown): UserUpdateData {
     result.isAdmin = input.isAdmin;
   }
   return result;
+}
+
+// Validate administrator-created accounts while rejecting caller-supplied passwords.
+export function createUserBody(value: unknown): UserCreateData {
+  const input = body(value, ['name', 'email', 'isAdmin']);
+  const name = text(input.name, 'name', 200);
+  if (typeof input.email !== 'string' || input.email.trim().length > 320
+    || !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(input.email.trim())) {
+    return invalid('email must be a valid email address');
+  }
+  if ('isAdmin' in input && typeof input.isAdmin !== 'boolean') return invalid('isAdmin must be boolean');
+  return { name, email: input.email.trim().toLowerCase(), isAdmin: input.isAdmin === true };
 }
 
 // Require a batch containing between one and one hundred entries.

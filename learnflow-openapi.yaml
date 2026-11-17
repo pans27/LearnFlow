@@ -47,23 +47,17 @@ paths:
           description: Password changed and all sessions invalidated; log in again with the new password.
           headers:
             Set-Cookie:
-              description: Clears the connect.sid session cookie.
+              description: Clears the learnflow.sid session cookie.
               schema:
                 type: string
         '400':
-          description: Invalid input, password policy violation, or new password matches current password
+          description: Invalid input, incorrect current password, password policy violation, or new password matches current password
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
         '401':
           description: Unauthorized
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Error'
-        '403':
-          description: Forbidden
           content:
             application/json:
               schema:
@@ -98,7 +92,7 @@ paths:
           description: Authenticated; mustChangePassword indicates whether a first-login reset is required
           headers:
             Set-Cookie:
-              description: Sets connect.sid as an HttpOnly session cookie; use Secure over HTTPS and SameSite protection.
+              description: Sets learnflow.sid as an HttpOnly session cookie; use Secure over HTTPS and SameSite protection.
               schema:
                 type: string
           content:
@@ -194,12 +188,6 @@ paths:
                 $ref: '#/components/schemas/Error'
         '409':
           description: A user with this email already exists (case-insensitive)
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Error'
-        '501':
-          description: User provisioning is pending authentication-owner integration.
           content:
             application/json:
               schema:
@@ -2979,8 +2967,8 @@ components:
     sessionCookie:
       type: apiKey
       in: cookie
-      name: connect.sid
-      description: Example Express session cookie name; configure to match the implementation. Protect cookie-authenticated
+      name: learnflow.sid
+      description: HttpOnly HS256 JWT cookie backed by a revocable PostgreSQL session. Protect cookie-authenticated
         mutations against CSRF.
   schemas:
     Error:

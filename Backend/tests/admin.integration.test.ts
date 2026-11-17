@@ -3,6 +3,7 @@ import { test } from 'node:test';
 import { spawnSync } from 'node:child_process';
 import { once } from 'node:events';
 import pg from 'pg';
+import { hashPassword, verifyPassword } from '../src/auth/password';
 import type { CourseBody } from '../src/types';
 import { scryptSync, timingSafeEqual } from 'node:crypto';
 
@@ -35,8 +36,9 @@ test('admin API and single-schema database integrity', {
   const { adminService } = await import('../src/services/admin');
   const prisma = getPrisma();
   // Insert a test account with the requested account flags.
-  const createUser = (email: string, isAdmin = false, mustChangePassword = false) =>
-    prisma.user.create({ data: { email, name: email, passwordHash: 'test-only-invalid-hash', isAdmin, mustChangePassword } });
+  const password = 'AdminIntegrationPassword123!';
+  const createUser = async (email: string, isAdmin = false, mustChangePassword = false) =>
+    prisma.user.create({ data: { email, name: email, passwordHash: await hashPassword(password), isAdmin, mustChangePassword } });
   const admin = await createUser('admin@example.test', true);
   const student = await createUser('student@example.test');
   const temporary = await createUser('temporary@example.test', true, true);
@@ -51,19 +53,48 @@ test('admin API and single-schema database integrity', {
   await once(server, 'listening');
   const address = server.address();
   assert.ok(address && typeof address !== 'string');
-  const base = `http://127.0.0.1:${address.port}/api/admin`;
+  const origin = `http://127.0.0.1:${address.port}`;
+  const base = `${origin}/api/admin`;
+  let cookie = '';
+  // Sign in through the actual auth endpoint and retain its session cookie.
+  const login = async (email: string, loginPassword = password) => {
+    const response = await fetch(`${origin}/api/auth/login`, { method: 'POST',
+      headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email, password: loginPassword }) });
+    assert.equal(response.status, 200);
+    cookie = response.headers.getSetCookie()[0].split(';')[0];
+  };
   // Send an HTTP request to the test API and parse its response.
   const request = async (path: string, method = 'GET', body?: unknown) => {
     const response = await fetch(`${base}${path}`, {
-      method, headers: { 'Content-Type': 'application/json' },
+      method, headers: { 'Content-Type': 'application/json', ...(cookie ? { Cookie: cookie } : {}) },
       ...(body === undefined ? {} : { body: JSON.stringify(body) }),
     });
     const data = response.status === 204 ? undefined : await response.json();
     return { status: response.status, data };
   };
 
-  await t.test('admin filter allows requests without a session', async () => {
+  await t.test('admin routes require a valid session and fresh administrator account flags', async () => {
+    assert.deepEqual(await request('/courses'), { status: 401, data: { message: 'Unauthorized' } });
+    await login(student.email);
+    assert.deepEqual(await request('/courses'), { status: 403, data: { message: 'Forbidden' } });
+    assert.equal((await request('/users', 'POST', { name: 'Blocked', email: 'blocked@example.test' })).status, 403);
+    assert.equal(await prisma.user.count({ where: { email: 'blocked@example.test' } }), 0);
+    await login(temporary.email);
+    assert.deepEqual(await request('/courses'), { status: 403, data: { message: 'Forbidden' } });
+    await login(admin.email);
+    const adminCookie = cookie;
     assert.equal((await request('/courses')).status, 200);
+    await prisma.user.update({ where: { id: admin.id }, data: { isAdmin: false } });
+    assert.deepEqual(await request('/courses'), { status: 403, data: { message: 'Forbidden' } });
+    await prisma.user.update({ where: { id: admin.id }, data: { isAdmin: true, isActive: false } });
+    assert.deepEqual(await request('/courses'), { status: 401, data: { message: 'Unauthorized' } });
+    await prisma.user.update({ where: { id: admin.id }, data: { isActive: true, mustChangePassword: true } });
+    assert.deepEqual(await request('/courses'), { status: 403, data: { message: 'Forbidden' } });
+    await prisma.user.update({ where: { id: admin.id }, data: { mustChangePassword: false } });
+    const loggedOut = await fetch(`${origin}/api/auth/logout`, { method: 'POST', headers: { Cookie: adminCookie } });
+    assert.equal(loggedOut.status, 204);
+    assert.deepEqual(await request('/courses'), { status: 401, data: { message: 'Unauthorized' } });
+    await login(admin.email);
   });
 
   let courseId: number;
@@ -86,9 +117,7 @@ test('admin API and single-schema database integrity', {
     assert.equal(users.status, 200);
     assert.equal(JSON.stringify(users.data).includes('passwordHash'), false);
     assert.equal((await request(`/users/${student.id}`, 'PATCH', { name: 'New name' })).data.name, 'New name');
-    assert.deepEqual(await request('/users', 'POST', {}), {
-      status: 501, data: { message: 'User provisioning awaits authentication integration' },
-    });
+    assert.equal((await request('/users', 'POST', {})).status, 400);
     assert.deepEqual(await request('/unknown'), { status: 404, data: { message: 'Not found' } });
   });
 
@@ -200,4 +229,33 @@ test('admin API and single-schema database integrity', {
     await assert.rejects(seedDefaultAdmin({ email: normal.email }));
     assert.equal((await prisma.user.findUniqueOrThrow({ where: { id: normal.id } })).isAdmin, false);
   });
+  await t.test('administrators provision users with working temporary passwords and required reset', async () => {
+    const activeAdmin = await prisma.user.findFirstOrThrow({ where: { isAdmin: true, isActive: true, mustChangePassword: false } });
+    await login(activeAdmin.email);
+    assert.equal((await request('/users', 'POST', { name: 'Invalid', email: 'bad' })).status, 400);
+    assert.equal((await request('/users', 'POST', { name: 'Invalid', email: 'valid@example.test', password: 'Forbidden' })).status, 400);
+    const response = await fetch(`${base}/users`, { method: 'POST', headers: { 'Content-Type': 'application/json', Cookie: cookie },
+      body: JSON.stringify({ name: 'Created User', email: ' Created@Example.test ', isAdmin: true }) });
+    assert.equal(response.status, 201);
+    assert.equal(response.headers.get('cache-control'), 'no-store');
+    const result = await response.json();
+    assert.equal(result.user.email, 'created@example.test');
+    assert.equal(result.user.isAdmin, true);
+    assert.equal(result.user.mustChangePassword, true);
+    assert.equal('passwordHash' in result.user, false);
+    assert.ok(result.temporaryPassword.length >= 16);
+    const stored = await prisma.user.findUniqueOrThrow({ where: { id: result.user.id } });
+    assert.equal(await verifyPassword(result.temporaryPassword, stored.passwordHash), true);
+    assert.equal((await request('/users', 'POST', { name: 'Duplicate', email: 'CREATED@EXAMPLE.TEST' })).status, 409);
+    await login(result.user.email, result.temporaryPassword);
+    assert.deepEqual(await request('/courses'), { status: 403, data: { message: 'Forbidden' } });
+    const changed = await fetch(`${origin}/api/auth/change-password`, { method: 'POST',
+      headers: { 'Content-Type': 'application/json', Cookie: cookie },
+      body: JSON.stringify({ currentPassword: result.temporaryPassword, newPassword: 'ReplacementPassword123!' }) });
+    assert.equal(changed.status, 204);
+    assert.deepEqual(await request('/courses'), { status: 401, data: { message: 'Unauthorized' } });
+    await login(result.user.email, 'ReplacementPassword123!');
+    assert.equal((await request('/courses')).status, 200);
+  });
+
 });

@@ -66,8 +66,8 @@ changing that account.
 Optional `DEFAULT_ADMIN_EMAIL` and `DEFAULT_ADMIN_PASSWORD` environment variables
 override creation values; the password must contain 16–128 characters. Only a
 salted hash is stored, with `isAdmin=true`, `isActive=true`, and
-`mustChangePassword=true`. Login and required password replacement still await
-the authentication owner's implementation.
+`mustChangePassword=true`. Login and the required first-login password replacement are implemented through
+the auth endpoints.
 
 The seed hash format is `scrypt$16384$8$1$<salt-hex>$<key-hex>`, using Node's
 `scrypt` with N=16384, r=8, p=1, and a 64-byte key. Pass the salt's hex text as the
@@ -118,7 +118,7 @@ The flow is router -> admin filter -> validation -> controller -> service -> dat
 | --- | --- |
 | `src/types/` | Domain files for courses, users, enrollments, shared responses, and validation locals |
 | `src/routes/admin.ts` | Wire method/path to middleware and controller |
-| `src/middleware/admin.ts` | Call `next()` as a placeholder for the auth owner's filter |
+| `src/middleware/admin.ts` | Require the signed-in account's current administrator permission |
 | `src/validation/admin.ts` | Parse IDs and allowlisted request fields; reject malformed input |
 | `src/middleware/validation.ts` | Put validated IDs/body in request-local response locals |
 | `src/controllers/admin.ts` | Call services, choose HTTP status, serialize response DTOs |
@@ -140,12 +140,13 @@ to prevent concurrent demotions from removing every active administrator.
 
 ## Admin endpoints implemented
 
-All paths below begin with `/api/admin`; the placeholder auth filter currently
-allows every request through by calling `next()`.
+All paths below begin with `/api/admin` and require a live session, an active
+account, a completed password reset, and administrator permission.
 
 | Method | Path | Behavior |
 | --- | --- | --- |
 | GET | `/users` | List public user fields, never password hashes |
+| POST | `/users` | Provision an account and return its generated temporary password once |
 | GET | `/users/:userId` | Get a user |
 | PATCH | `/users/:userId` | Update `name` and/or `isAdmin`; protect the last active admin |
 | GET | `/courses` | List active and archived courses |
@@ -198,14 +199,24 @@ middleware respond to expected failures locally; unexpected errors reach
 | GET | `/api/courses/:courseId` | Get course metadata and the current user's course role |
 | GET | `/api/courses/:courseId/dashboard` | Get recent updates and a student/instructor dashboard |
 
-The authentication owner should mount session-cookie middleware before the API
-routes and store `req.session.currentUser = { id: user.id }` after login.
-`src/middleware/current-user.ts` assumes that session already exists, loads the
-account from PostgreSQL, and sets `res.locals.currentUser`. Missing/inactive
+`src/middleware/session.ts` reads the `learnflow.sid` HttpOnly JWT cookie,
+verifies its signature and expiry, and checks its backing PostgreSQL session.
+It sets `req.session = { sessionId, currentUser: { id } }` only for a valid session.
+`src/middleware/current-user.ts` reloads the account from PostgreSQL and sets
+`res.locals.currentUser`. Missing/inactive
 accounts return 401; accounts requiring a password change return 403.
 Error messages are always `Unauthorized` for 401 and `Forbidden` for 403.
-Cookie parsing, session verification, login, and the session store remain TODOs; no ID
-is taken from an unverified request header, query parameter, or body.
+No ID is taken from an unverified request header, query parameter, or body.
+Logout revokes the current session; password changes revoke all sessions for the
+account. Administrator status and password-change flags are rechecked on every
+protected request, so a valid cookie cannot retain removed privileges.
+
+Use `POST /api/auth/login`, `GET /api/auth/me`, `POST /api/auth/logout`, and
+`POST /api/auth/change-password` for the login flow. A temporary-password login
+can access profile, logout, and password change, but cannot access admin/course
+routes until the password is replaced and the user logs in again.
+Set `JWT_SECRET` to at least 32 characters in production; development uses a
+local fallback. Auth cookies use HttpOnly, SameSite=Lax, and Secure in production.
 
 Course access is checked against current enrollments. Regular users cannot read
 archived courses; administrators can read them with `readOnly: true`. A user's
@@ -237,17 +248,14 @@ grading state. Archived dashboards disable all management permissions.
 
 ## Team integration TODOs
 
-Authentication owner:
+Authentication integration:
 
-- Mount session verification and CSRF protection before the admin router.
-- Replace the `next()` placeholder with session verification and checks for
-  `isActive`, `isAdmin`, and `mustChangePassword` on every admin request.
-- Implement login/logout, password hashing/reset, and session invalidation.
-  The default admin seed is available above. The session table is storage groundwork, not a configured
-  Express session store; adapt the table/store together as needed.
-- Implement `POST /api/admin/users`: temporary-password generation and hashing,
-  one-time response with `Cache-Control: no-store`, and `mustChangePassword=true`.
-  The route currently returns 501 and never creates partial accounts.
+- Login, session loading, logout, password changes, and administrator checks are connected.
+- `POST /api/admin/users` uses the shared scrypt helper, returns a server-generated
+  temporary password once with `Cache-Control: no-store`, and requires a password
+  reset on first login. Caller-supplied passwords and unknown fields are rejected.
+- Keep production cookie settings and any additional CSRF policy coordinated
+  with the frontend's deployment origins.
 
 File-processing owner:
 
@@ -276,7 +284,7 @@ npm test
 
 The integration suite creates, migrates, and deletes its own uniquely named test
 database. It never clears existing application tables. Tests exercise the
-pass-through admin filter and message-only errors. Coverage
+verified JWT/database sessions, administrator authorization, and message-only errors. Coverage
 includes strict validation, enrollment conflicts, archived
 course protection, history retention, cross-course foreign keys, SQL checks,
 full-text indexing, and concurrent last-admin protection.

@@ -5,7 +5,7 @@ export type {
   AccessibleCourseResponse, CourseAccessRecord,
 } from './courses';
 export type {
-  UserBody, UserUpdateData, PublicUserRecord, UserResponse, CreateUserResponse,
+  UserBody, UserUpdateData, UserCreateData, PublicUserRecord, UserResponse, CreateUserResponse,
   DefaultAdminOptions, DefaultAdminResult,
 } from './users';
 export type {

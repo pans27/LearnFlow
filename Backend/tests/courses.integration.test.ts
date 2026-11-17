@@ -2,9 +2,8 @@ import assert from 'node:assert/strict';
 import { once } from 'node:events';
 import { spawnSync } from 'node:child_process';
 import { test } from 'node:test';
-import express from 'express';
 import pg from 'pg';
-import type { SessionRequest, UserSession } from '../src/types';
+import { signAuthToken } from '../src/auth/jwt';
 
 test('session-based course access and role-aware dashboards', {
   skip: !process.env.TEST_DATABASE_URL,
@@ -104,17 +103,14 @@ test('session-based course access and role-aware dashboards', {
   await prisma.learningResource.create({ data: { courseId: other.id, ownerId: instructor.id,
     title: 'Other resource', resourceType: 'instructor_material', originalFilename: 'other.pdf', s3Key: 'private/other' } });
 
-  // Simulate a session store in tests without adding a production identity bypass.
-  const sessions = new Map<string, UserSession>([admin, instructor, student, secondStudent, inactive, temporary, outsider]
-    .map((user) => [String(user.id), { currentUser: { id: user.id } }]));
-  const harness = express();
-  harness.use((req, _res, next) => {
-    const token = req.headers.cookie?.match(/testSession=([^;]+)/)?.[1];
-    if (token) (req as SessionRequest).session = sessions.get(token);
-    next();
-  });
-  harness.use(app);
-  const server = harness.listen(0, '127.0.0.1');
+  const { config } = await import('../src/config');
+  const cookies = new Map<number, string>();
+  for (const user of [admin, instructor, student, secondStudent, inactive, temporary, outsider]) {
+    const expiresAt = new Date(Date.now() + 60000);
+    const session = await prisma.session.create({ data: { id: `course-test-${user.id}`, userId: user.id, expiresAt } });
+    cookies.set(user.id, `${config.authCookie}=${signAuthToken({ sid: session.id, uid: user.id }, config.jwtSecret, expiresAt)}`);
+  }
+  const server = app.listen(0, '127.0.0.1');
   cleanup = async () => {
     await new Promise<void>((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
     await closeDatabase();
@@ -122,10 +118,10 @@ test('session-based course access and role-aware dashboards', {
   await once(server, 'listening');
   const address = server.address();
   assert.ok(address && typeof address !== 'string');
-  // Fetch a course endpoint using an optional test session cookie.
+  // Fetch a course endpoint using a signed cookie backed by a real session row.
   const request = async (path: string, userId?: number) => {
     const response = await fetch(`http://127.0.0.1:${address.port}/api/courses${path}`, {
-      headers: userId === undefined ? {} : { Cookie: `testSession=${userId}` },
+      headers: userId === undefined ? {} : { Cookie: cookies.get(userId)! },
     });
     return { status: response.status, data: await response.json() };
   };

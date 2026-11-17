@@ -3,8 +3,18 @@ import { once } from 'node:events';
 import { test } from 'node:test';
 import app from '../src/app';
 import { adminService } from '../src/services/admin';
+import { authDb } from '../src/db/auth';
+import { userDb } from '../src/db/users';
+import { config } from '../src/config';
+import { signAuthToken } from '../src/auth/jwt';
 
-test('admin routes pass named validated locals to their services', async (t) => {
+test('authenticated admin routes pass named validated locals to their services', async (t) => {
+  const expiresAt = new Date(Date.now() + 60000);
+  const session = { id: 'route-test-session', userId: 1, expiresAt, createdAt: new Date(), sessionData: {} };
+  t.mock.method(authDb, 'findSession', async () => session);
+  t.mock.method(userDb, 'findSessionAccount', async () => ({ id: 1, name: 'Admin', email: 'admin@example.test',
+    isAdmin: true, isActive: true, mustChangePassword: false }));
+  const cookie = `${config.authCookie}=${signAuthToken({ sid: session.id, uid: 1 }, config.jwtSecret, expiresAt)}`;
   const course = { id: 1, name: 'Software', courseCode: 'ECE1724', description: null,
     status: 'active', createdAt: new Date(), updatedAt: new Date() };
   const enrollment = { courseId: 1, userId: 2, role: 'student', enrolledAt: new Date() };
@@ -26,7 +36,7 @@ test('admin routes pass named validated locals to their services', async (t) => 
   // Send a JSON request to the test API and decode its response.
   const request = async (path: string, method: string, body: unknown) => {
     const response = await fetch(`http://127.0.0.1:${address.port}/api/admin${path}`, {
-      method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
+      method, headers: { 'Content-Type': 'application/json', Cookie: cookie }, body: JSON.stringify(body),
     });
     return { status: response.status, body: response.status === 204 ? undefined : await response.json() };
   };

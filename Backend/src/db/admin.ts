@@ -1,4 +1,4 @@
-import type { CourseInsertData, CourseSaveData, UserUpdateData, CourseRole, LockedCourse, CourseLockRow, EnrollmentCreateData } from '../types';
+import type { CourseInsertData, CourseSaveData, UserUpdateData, UserCreateData, CourseRole, LockedCourse, CourseLockRow, EnrollmentCreateData } from '../types';
 import { Prisma } from '../../generated/prisma/client';
 import { getPrisma } from '../database';
 import { HttpError } from '../errors';
@@ -8,6 +8,19 @@ export const publicUserSelect = {
 } satisfies Prisma.UserSelect;
 
 export const adminDb = {
+
+  // Insert a provisioned account and handle case-insensitive email conflicts locally.
+  createUser: async (data: UserCreateData, passwordHash: string) => {
+    try {
+      return await getPrisma().user.create({ data: { ...data, passwordHash, isActive: true, mustChangePassword: true },
+        select: publicUserSelect });
+    } catch (error) {
+      if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
+        throw new HttpError(409, 'A user with this email already exists');
+      }
+      throw error;
+    }
+  },
 
   // Fetch account flags for every user in a membership batch.
   findAccounts: (tx: Prisma.TransactionClient, userIds: number[]) =>

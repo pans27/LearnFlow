@@ -4,7 +4,6 @@ import type {
   CourseResponse, UserResponse, EnrollmentResponse, ValidatedLocals,
 } from '../types';
 import { adminService as service } from '../services/admin';
-import { HttpError } from '../errors';
 import { handleRequest } from '../middleware/handler';
 import { requireId } from '../middleware/validation';
 
@@ -42,11 +41,13 @@ export const updateUser: RequestHandler = handleRequest(async (_req, res) => {
   res.json(userResponse(await service.updateUser(requireId(res, 'userId'), userData)));
 });
 
-// Reject user creation until authentication integration is implemented.
-export const provisionUser: RequestHandler = handleRequest(() => {
-  // TODO(auth owner): generate and hash a temporary password without accepting caller-supplied passwords.
-  // Return it once with Cache-Control: no-store and persist mustChangePassword=true.
-  throw new HttpError(501, 'User provisioning awaits authentication integration');
+// Return a newly provisioned account and its temporary password without caching the response.
+export const provisionUser: RequestHandler = handleRequest(async (_req, res) => {
+  const { userCreate } = res.locals as ValidatedLocals;
+  if (!userCreate) throw new Error('Missing validated user creation data');
+  const result = await service.createUser(userCreate);
+  res.set('Cache-Control', 'no-store');
+  res.status(201).json({ user: userResponse(result.user), temporaryPassword: result.temporaryPassword });
 });
 
 // Return active and archived courses.
