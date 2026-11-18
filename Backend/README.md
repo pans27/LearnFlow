@@ -16,7 +16,7 @@ that are not implemented yet.
 | Authentication | Implemented: login, current user, logout, and password change |
 | Administration | Implemented: user provisioning/updates, courses, and single/bulk enrollment management |
 | User courses | Implemented: enrolled-course list, course detail, and role-aware dashboard |
-| Announcements | Database and dashboard summaries exist; standalone endpoints are not implemented |
+| Announcements | Implemented: course-scoped list, read, create, edit, delete, visibility, and cursor pagination |
 | Assignments and quizzes | Database and dashboard summaries exist; standalone assessment endpoints are not implemented |
 | Submissions and grading | Database and dashboard statistics exist; standalone endpoints are not implemented |
 | Resources and PDF search | Database and dashboard metadata exist; upload, extraction, search, preview, and download endpoints are not implemented |
@@ -154,9 +154,11 @@ required fields, and plain object types describe records and responses.
 Controllers read named validation results from `res.locals as ValidatedLocals`.
 The `types/index.ts` file re-exports domain types so existing imports stay simple.
 Add `assignments.ts`, `quizzes.ts`, and `resources.ts` as those features are implemented.
-Course writes lock the course row before checking status, so archiving cannot
-race with an enrollment or metadata update. Admin-status changes are serialized
-to prevent concurrent demotions from removing every active administrator.
+Course operations check status and membership without explicitly locking the course row.
+Transactions keep related writes, including bulk enrollment changes, atomic; an operation
+already in progress may finish after archival or a membership change.
+Admin-status changes retain an advisory lock to prevent concurrent demotions from
+removing every active administrator.
 
 ## Auth endpoints
 
@@ -298,6 +300,40 @@ Draft attempts and submissions from former/inactive members are excluded.
 `gradedCount` is null for assignments because their file-submission table has no
 grading state. Archived dashboards disable all management permissions.
 
+## Announcement endpoints
+
+All paths below are under `/api/courses/:courseId/announcements` and require a
+verified session and course access.
+
+| Method | Path | Behavior |
+| --- | --- | --- |
+| GET | `/` | List newest announcements with optional `limit` and `cursor` |
+| POST | `/` | Create an announcement as a course instructor or administrator |
+| GET | `/:announcementId` | Read one announcement from this course |
+| PATCH | `/:announcementId` | Edit title, body, or visibility as an instructor/admin |
+| DELETE | `/:announcementId` | Delete an announcement as an instructor/admin; return 204 |
+
+Create with `{"title":"Update","body":"Full announcement text","isVisible":true}`.
+Visibility defaults to true. Titles are limited to 200 characters and bodies to
+20000 characters; both must be nonempty after trimming. Updates require at least
+one allowed field. Author and course IDs are derived from the session/path and
+cannot be supplied in the body.
+
+Students see only visible announcements; instructors/admins can read hidden ones.
+Hidden announcements return 404 to students, and cross-course IDs return 404.
+Only administrators can read archived courses; announcement writes to archived
+courses return 409. Any instructor in the course can edit/delete its announcements,
+while editing preserves the original author.
+
+Lists return arrays, ordered by `createdAt` descending and then ID descending.
+Pagination defaults to 20 items and allows 1-100, configured in
+`src/constants/announcements.ts`. If more items exist, the `X-Next-Cursor` header
+contains the last returned ID; pass it as `cursor` on the next request. Missing,
+hidden, deleted, or cross-course cursor records return 400, so restart pagination
+without a cursor if it becomes stale. The header is omitted on the last page.
+Separate-origin browser clients must expose this response header in their CORS
+configuration. Dashboard announcements continue using the dashboard limit.
+
 ## Team integration TODOs
 
 Authentication integration:
@@ -316,7 +352,7 @@ File-processing owner:
 - Integrate final submission archival with S3 before marking submissions finalized.
   No S3 keys or extracted PDF content are fabricated by these endpoints.
 
-Next backend slices: announcements, quizzes/questions, submissions/grading, and
+Next backend slices: assignments, quizzes/questions, submissions/grading, and
 course-scoped PDF search. Their tables exist; their endpoints are not implemented yet.
 
 ## Verification

@@ -47,13 +47,8 @@ export type CourseRecord = {
   status: string;
 };
 
-export type LockedCourse = {
+export type CourseState = {
   id: number;
-  status: string;
-};
-
-export type CourseLockRow = {
-  course_id: number;
   status: string;
 };
 

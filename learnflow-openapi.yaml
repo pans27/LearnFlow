@@ -1193,11 +1193,12 @@ paths:
                 message: An unexpected error occurred
   /api/courses/{courseId}/announcements:
     get:
-      x-implementation-status: planned
+      x-implementation-status: implemented
       tags:
       - Announcements
       operationId: get_api_courses_courseId_announcements
-      summary: "[Planned] List announcements"
+      summary: "List announcements"
+      description: Lists visible announcements for students and all announcements for instructors or administrators. Results are ordered by createdAt descending, then ID descending; X-Next-Cursor is omitted on the last page.
       parameters:
       - $ref: '#/components/parameters/courseId'
       - name: limit
@@ -1205,18 +1206,27 @@ paths:
         required: false
         schema:
           type: integer
+          minimum: 1
+          maximum: 100
+          default: 20
         description: Page size
       - name: cursor
         in: query
         required: false
         schema:
           type: string
-        description: Pagination cursor
+          pattern: '^[1-9][0-9]{0,9}$'
+        description: Last returned announcement ID from X-Next-Cursor; a deleted, hidden, or cross-course cursor returns 400.
       security:
       - sessionCookie: []
       responses:
         '200':
-          description: Returns an empty array when no items match.
+          description: Returns an empty array when no announcements match.
+          headers:
+            X-Next-Cursor:
+              description: Last returned announcement ID; send it as cursor to fetch the next page.
+              schema:
+                type: string
           content:
             application/json:
               schema:
@@ -1247,12 +1257,20 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
+
+        '500':
+          description: Unexpected error; logged by the server.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
     post:
-      x-implementation-status: planned
+      x-implementation-status: implemented
       tags:
       - Announcements
       operationId: post_api_courses_courseId_announcements
-      summary: "[Planned] Publish announcement"
+      summary: "Publish announcement"
+      description: Requires a course instructor or administrator and an active course; archived courses reject writes with 409.
       parameters:
       - $ref: '#/components/parameters/courseId'
       security:
@@ -1262,15 +1280,7 @@ paths:
         content:
           application/json:
             schema:
-              type: object
-              properties:
-                title:
-                  type: string
-                body:
-                  type: string
-              required:
-              - title
-              - body
+              $ref: '#/components/schemas/CreateAnnouncementRequest'
       responses:
         '201':
           description: Success
@@ -1302,13 +1312,27 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
+        '409':
+          description: Course is archived; reactivate before changing announcements.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+        '500':
+          description: Unexpected error; logged by the server.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
   /api/courses/{courseId}/announcements/{announcementId}:
     get:
-      x-implementation-status: planned
+      x-implementation-status: implemented
       tags:
       - Announcements
       operationId: get_api_courses_courseId_announcements_announcementId
-      summary: "[Planned] Get announcement"
+      summary: "Get announcement"
+      description: Returns one course-scoped announcement; hidden announcements return 404 for students.
       parameters:
       - $ref: '#/components/parameters/courseId'
       - $ref: '#/components/parameters/announcementId'
@@ -1345,12 +1369,20 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
+
+        '500':
+          description: Unexpected error; logged by the server.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
     patch:
-      x-implementation-status: planned
+      x-implementation-status: implemented
       tags:
       - Announcements
       operationId: patch_api_courses_courseId_announcements_announcementId
-      summary: "[Planned] Edit announcement"
+      summary: "Edit announcement"
+      description: Requires a course instructor or administrator and an active course; archived courses reject writes with 409.
       parameters:
       - $ref: '#/components/parameters/courseId'
       - $ref: '#/components/parameters/announcementId'
@@ -1361,12 +1393,7 @@ paths:
         content:
           application/json:
             schema:
-              type: object
-              properties:
-                title:
-                  type: string
-                body:
-                  type: string
+              $ref: '#/components/schemas/UpdateAnnouncementRequest'
       responses:
         '200':
           description: Success
@@ -1398,12 +1425,27 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
+
+        '409':
+          description: Course is archived; reactivate before changing announcements.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+        '500':
+          description: Unexpected error; logged by the server.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
     delete:
-      x-implementation-status: planned
+      x-implementation-status: implemented
       tags:
       - Announcements
       operationId: delete_api_courses_courseId_announcements_announcementId
-      summary: "[Planned] Delete announcement"
+      summary: "Delete announcement"
+      description: Requires a course instructor or administrator and an active course; archived courses reject writes with 409.
       parameters:
       - $ref: '#/components/parameters/courseId'
       - $ref: '#/components/parameters/announcementId'
@@ -1432,6 +1474,20 @@ paths:
                 $ref: '#/components/schemas/Error'
         '404':
           description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+        '409':
+          description: Course is archived; reactivate before changing announcements.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+        '500':
+          description: Unexpected error; logged by the server.
           content:
             application/json:
               schema:
@@ -3483,23 +3539,60 @@ components:
       - role
     Announcement:
       type: object
+      additionalProperties: false
+      required: [id, courseId, authorId, title, body, isVisible, createdAt, updatedAt]
       properties:
         id:
-          type: integer
-          format: int32
-          minimum: 1
-          maximum: 2147483647
+          $ref: '#/components/schemas/EntityId'
+        courseId:
+          $ref: '#/components/schemas/EntityId'
+        authorId:
+          $ref: '#/components/schemas/EntityId'
         title:
           type: string
         body:
           type: string
+        isVisible:
+          type: boolean
         createdAt:
           type: string
           format: date-time
-      required:
-      - id
-      - title
-      - body
+        updatedAt:
+          type: string
+          format: date-time
+    CreateAnnouncementRequest:
+      type: object
+      additionalProperties: false
+      required: [title, body]
+      properties:
+        title:
+          type: string
+          minLength: 1
+          maxLength: 200
+          description: Trimmed before validation; whitespace-only text is rejected.
+        body:
+          type: string
+          minLength: 1
+          maxLength: 20000
+          description: Full announcement text, with surrounding whitespace trimmed.
+        isVisible:
+          type: boolean
+          default: true
+    UpdateAnnouncementRequest:
+      type: object
+      additionalProperties: false
+      minProperties: 1
+      properties:
+        title:
+          type: string
+          minLength: 1
+          maxLength: 200
+        body:
+          type: string
+          minLength: 1
+          maxLength: 20000
+        isVisible:
+          type: boolean
     Assignment:
       type: object
       properties:
