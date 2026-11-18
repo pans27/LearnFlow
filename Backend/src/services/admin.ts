@@ -1,11 +1,11 @@
-import type { LockedCourse, CourseCreateData, CourseUpdateData, UserUpdateData, UserCreateData, CourseStatus, CourseRole, BulkEnrollmentData, BulkRemovalData } from '../types';
+import type { CourseState, CourseCreateData, CourseUpdateData, UserUpdateData, UserCreateData, CourseStatus, CourseRole, BulkEnrollmentData, BulkRemovalData } from '../types';
 import { randomBytes } from 'node:crypto';
 import { hashPassword } from '../auth/password';
 import { adminDb as database } from '../db/admin';
 import { HttpError } from '../errors';
 
 // Reject changes to an archived course.
-function requireActive(course: LockedCourse) {
+function requireActive(course: CourseState) {
   if (course.status !== 'active') throw new HttpError(409, 'Reactivate this course before changing it');
 }
 
@@ -78,7 +78,7 @@ export const adminService = {
     });
   },
 
-  // Archive or reactivate a course under its transaction lock.
+  // Archive or reactivate a course within a transaction.
   setCourseStatus(id: number, status: CourseStatus) {
     return database.withCourse(id, (tx) => database.updateCourse(tx, id, { status }));
   },

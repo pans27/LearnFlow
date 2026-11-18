@@ -15,7 +15,7 @@ router.use('/auth', authRoutes);
 router.use('/admin', adminRoutes);
 router.use('/courses', courseRoutes);
 
-// TODO: Add course-member routes for announcements, quizzes, submissions, search.
+// TODO: Add course-member routes for assignments, quizzes, submissions, and search.
 // TODO(file owner): integrate authorized storage/extraction operations.
 // See ../../learnflow-openapi.yaml for the proposed endpoint contract.
 

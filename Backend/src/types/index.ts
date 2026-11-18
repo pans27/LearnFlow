@@ -1,7 +1,7 @@
 // Re-export domain types to preserve existing imports from the types folder.
 export type {
   CourseStatus, CourseBody, CourseStatusBody, CourseCreateData, CourseUpdateData,
-  CourseInsertData, CourseSaveData, CourseRecord, LockedCourse, CourseLockRow, CourseResponse,
+  CourseInsertData, CourseSaveData, CourseRecord, CourseState, CourseResponse,
   AccessibleCourseResponse, CourseAccessRecord,
 } from './courses';
 export type {
@@ -16,6 +16,10 @@ export type {
 export type { ErrorResponse, HealthResponse } from './common';
 export type { ValidatedLocals, ValidatedBodyField } from './validation';
 export type { SessionUser, UserSession, SessionRequest, CurrentUser, SessionAccount } from './session';
+export type {
+  AnnouncementBody, AnnouncementCreateData, AnnouncementUpdateData, AnnouncementQuery,
+  AnnouncementRecord, AnnouncementResponse, AnnouncementPage,
+} from './announcements';
 export type {
   DashboardAnnouncement, DashboardAssessment, DashboardResource, DashboardPermissions,
   ActiveAssessmentStatistics, DashboardResponse,

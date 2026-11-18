@@ -14,14 +14,14 @@ export function validateBody(parser: (value: unknown) => unknown, field: Validat
 // Parse route IDs and store them in response locals.
 export const validateIds: RequestHandler = handleRequest((req, res, next) => {
   const locals = res.locals as ValidatedLocals;
-  for (const key of ['courseId', 'userId'] as const) {
+  for (const key of ['courseId', 'userId', 'announcementId'] as const) {
     if (req.params[key] !== undefined) locals[key] = id(req.params[key]);
   }
   next();
 });
 
 // Return a validated route ID or report missing validation middleware.
-export function requireId(res: Response, field: 'courseId' | 'userId'): number {
+export function requireId(res: Response, field: 'courseId' | 'userId' | 'announcementId'): number {
   const value = (res.locals as ValidatedLocals)[field];
   if (value === undefined) throw new Error(`Missing validated ${field}`);
   return value;

@@ -13,7 +13,7 @@ function courseResponse(course: CourseAccessRecord): AccessibleCourseResponse {
 }
 
 // Require membership for regular users and reserve archived courses for administrators.
-async function accessibleCourse(tx: Prisma.TransactionClient, courseId: number, user: CurrentUser): Promise<AccessibleCourseResponse> {
+export async function requireCourseAccess(tx: Prisma.TransactionClient, courseId: number, user: CurrentUser): Promise<AccessibleCourseResponse> {
   const course = await database.find(tx, courseId, user.id);
   if (!course) throw new HttpError(404, 'Course not found');
   if (!user.isAdmin && (course.status !== 'active' || !course.enrollments.length)) {
@@ -30,13 +30,13 @@ export const courseService = {
 
   // Return one course after checking the current user's access.
   get(courseId: number, user: CurrentUser) {
-    return database.read((tx) => accessibleCourse(tx, courseId, user));
+    return database.read((tx) => requireCourseAccess(tx, courseId, user));
   },
 
   // Build a role-aware course dashboard without exposing answer keys or private file data.
   dashboard(courseId: number, user: CurrentUser): Promise<DashboardResponse> {
     return database.read(async (tx) => {
-      const course = await accessibleCourse(tx, courseId, user);
+      const course = await requireCourseAccess(tx, courseId, user);
       const instructor = user.isAdmin || course.role === 'instructor';
       const readOnly = course.status === 'archived';
       const canManage = instructor && !readOnly;

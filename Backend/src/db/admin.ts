@@ -1,6 +1,7 @@
-import type { CourseInsertData, CourseSaveData, UserUpdateData, UserCreateData, CourseRole, LockedCourse, CourseLockRow, EnrollmentCreateData } from '../types';
+import type { CourseInsertData, CourseSaveData, UserUpdateData, UserCreateData, CourseRole, EnrollmentCreateData } from '../types';
 import { Prisma } from '../../generated/prisma/client';
 import { getPrisma } from '../database';
+import { withCourseTransaction } from './courses';
 import { HttpError } from '../errors';
 
 export const publicUserSelect = {
@@ -121,14 +122,8 @@ export const adminDb = {
     tx.user.update({ where: { id }, data, select: publicUserSelect }),
 
   
-  // Run an operation while holding a transaction lock on its course.
-  withCourse: <T>(id: number, operation: (tx: Prisma.TransactionClient, course: LockedCourse) => Promise<T>) => getPrisma().$transaction(async (tx) => {
-    const rows = await tx.$queryRaw<CourseLockRow[]>`
-      SELECT course_id, status FROM learnflow.courses WHERE course_id = ${id} FOR UPDATE
-    `;
-    if (!rows[0]) throw new HttpError(404, 'Course not found');
-    return operation(tx, { id: rows[0].course_id, status: rows[0].status });
-  }),
+  // Check the course and run related database operations atomically.
+  withCourse: withCourseTransaction,
 
   // Serialize administrator updates using a transaction advisory lock.
   withAdminLock: <T>(operation: (tx: Prisma.TransactionClient) => Promise<T>) =>
