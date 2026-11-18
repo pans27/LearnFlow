@@ -47,3 +47,20 @@ In **Resources**, students can share PDF or Word notes and instructors can uploa
 
 The team repository uses `Frontend/` for this application. Review any existing files in that folder before integrating this version on a feature branch.
 
+
+
+## Local backend authentication
+
+To use real authentication, create an ignored `.env.local` in `Frontend/` with:
+
+```dotenv
+VITE_USE_MOCK=false
+VITE_API_BASE_URL=/api
+API_PROXY_TARGET=http://127.0.0.1:3002
+```
+
+Restart Vite after changing the environment. Start the local backend from `Backend/` with `DB_PORT=5433 PORT=3002 docker compose up -d --wait` when the default ports are occupied. The development proxy forwards `/api` so the browser can use the backend session cookie.
+
+Use a database-provisioned account to sign in. An account with `mustChangePassword` opens `/change-password` before accessing protected pages. Enter the temporary password, a new password of 12–128 characters, and confirmation. A successful change revokes the session, returns to sign-in, and requires the new password. Complete password entry manually in the browser. Administrators then open `/admin`; other accounts open `/courses`.
+
+Real-mode course and user response fields are adapted for the frontend. Announcements, quizzes, grading, and resources still depend on their backend endpoints being implemented. To return to the complete mock demo, set `VITE_USE_MOCK=true` in `.env.local` and restart Vite. The passwords for mock accounts do not sign into the real backend.

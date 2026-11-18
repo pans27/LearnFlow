@@ -2,8 +2,10 @@ export const studentResourceAccept = ".pdf,.doc,.docx";
 
 export function validateResourceFile(
   file: File,
-  role: "student" | "instructor",
+  role: "student" | "instructor" | null,
 ) {
+  if (role === null)
+    throw new Error("Course membership is required to upload files.");
   if (role === "student" && !/\.(pdf|docx?)$/i.test(file.name)) {
     throw new Error("Choose a PDF or Word (.doc, .docx) file.");
   }

@@ -1,4 +1,11 @@
-import type { LearnFlowApi, Resource, ResourceMatch } from "@/types";
+import type {
+  LearnFlowApi,
+  Resource,
+  ResourceMatch,
+  User,
+  Course,
+  Dashboard,
+} from "@/types";
 import { mockApi } from "./mock";
 const base = import.meta.env.VITE_API_BASE_URL || "/api";
 export class ApiError extends Error {
@@ -9,7 +16,7 @@ export class ApiError extends Error {
     super(message);
   }
 }
-async function request<T>(
+export async function request<T>(
   path: string,
   method = "GET",
   body?: unknown,
@@ -53,13 +60,84 @@ function resourceFromApi(resource: ApiResource): Resource {
         : resource.extractionStatus,
   };
 }
+export type BackendUser = {
+  id: number;
+  name: string;
+  email: string;
+  isAdmin: boolean;
+  mustChangePassword: boolean;
+};
+export function userFromApi(user: BackendUser): User {
+  return {
+    id: String(user.id),
+    name: user.name,
+    email: user.email,
+    systemRole: user.isAdmin ? "admin" : "user",
+    mustChangePassword: user.mustChangePassword,
+  };
+}
+type BackendCourse = {
+  id: number;
+  name: string;
+  courseCode: string;
+  description: string | null;
+  status: Course["status"];
+  role: Course["role"];
+};
+function courseFromApi(course: BackendCourse): Course {
+  return {
+    ...course,
+    id: String(course.id),
+    code: course.courseCode,
+    description: course.description ?? "",
+  };
+}
+export async function changePassword(input: {
+  currentPassword: string;
+  newPassword: string;
+}) {
+  await request<void>("/auth/change-password", "POST", input);
+}
 export const httpApi: LearnFlowApi = {
-  me: () => request("/auth/me"),
-  login: (input) => request("/auth/login", "POST", input),
+  me: async () => userFromApi(await request<BackendUser>("/auth/me")),
+  login: async (input) =>
+    userFromApi(await request<BackendUser>("/auth/login", "POST", input)),
   logout: () => request("/auth/logout", "POST"),
-  courses: () => request("/courses"),
-  course: (id) => request(c(id)),
-  dashboard: (id) => request(c(id) + "/dashboard"),
+  courses: async () =>
+    (await request<BackendCourse[]>("/courses")).map(courseFromApi),
+  course: async (id) => courseFromApi(await request<BackendCourse>(c(id))),
+  dashboard: async (id) => {
+    const data = await request<{
+      recentAnnouncements: {
+        id: number;
+        title: string;
+        body: string;
+        createdAt: string;
+      }[];
+      upcomingAssessments: {
+        id: number;
+        title: string;
+        type: "assignment" | "quiz";
+        dueAt: string;
+      }[];
+      recentResources: (ApiResource & { description?: string })[];
+    }>(c(id) + "/dashboard");
+    return {
+      announcements: data.recentAnnouncements.map((item) => ({
+        ...item,
+        id: String(item.id),
+        author: "",
+      })),
+      upcomingAssessments: data.upcomingAssessments.map((item) => ({
+        ...item,
+        id: String(item.id),
+        kind: item.type,
+        quizId: item.type === "quiz" ? String(item.id) : undefined,
+        description: "",
+      })),
+      recentResources: data.recentResources.map(resourceFromApi),
+    } satisfies Dashboard;
+  },
   announcements: (id) => request(c(id) + "/announcements"),
   createAnnouncement: (id, input) =>
     request(c(id) + "/announcements", "POST", input),
@@ -94,7 +172,8 @@ export const httpApi: LearnFlowApi = {
       await request<ApiResource>(c(id) + "/resources", "POST", data),
     );
   },
-  adminUsers: () => request("/admin/users"),
+  adminUsers: async () =>
+    (await request<BackendUser[]>("/admin/users")).map(userFromApi),
 };
 export const isMock = import.meta.env.VITE_USE_MOCK !== "false";
 export const api: LearnFlowApi = isMock ? mockApi : httpApi;

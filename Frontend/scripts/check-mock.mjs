@@ -14,6 +14,7 @@ const server = await createServer({
   root: new URL("..", import.meta.url).pathname,
   server: { middlewareMode: true, hmr: false, ws: false },
   appType: "custom",
+  optimizeDeps: { noDiscovery: true, include: [] },
 });
 try {
   const { getDueStatus } = await server.ssrLoadModule("/src/lib/due.ts");
@@ -185,7 +186,10 @@ try {
   await a.login({ email: "alex@learnflow.demo", password: "demo" });
   const [record] = review.list("cloud", mixed.id);
   assert.equal(record.studentName, "Jamie Patel");
-  assert.throws(() => review.publish("cloud", mixed.id), /Save scores for every submission/);
+  assert.throws(
+    () => review.publish("cloud", mixed.id),
+    /Save scores for every submission/,
+  );
   review.save(
     "cloud",
     mixed.id,
