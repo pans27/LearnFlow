@@ -15,6 +15,7 @@ export interface Course {
   status: "active" | "archived";
 }
 export interface Announcement {
+  isVisible?: boolean;
   id: string;
   title: string;
   body: string;
@@ -98,8 +99,14 @@ export interface LearnFlowApi {
   announcements(id: string): Promise<Announcement[]>;
   createAnnouncement(
     id: string,
-    input: { title: string; body: string },
+    input: { title: string; body: string; isVisible?: boolean },
   ): Promise<Announcement>;
+  updateAnnouncement(
+    id: string,
+    announcementId: string,
+    input: { title?: string; body?: string; isVisible?: boolean },
+  ): Promise<Announcement>;
+  deleteAnnouncement(id: string, announcementId: string): Promise<void>;
   quizzes(id: string): Promise<Quiz[]>;
   createQuiz(
     id: string,

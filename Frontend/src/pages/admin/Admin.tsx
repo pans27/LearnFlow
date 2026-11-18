@@ -723,6 +723,8 @@ function Members({
     ]);
     return { users, enrollments };
   }, [course.id]);
+  const [selected, setSelected] = useState<string[]>([]);
+  const [removeOpen, setRemoveOpen] = useState(false);
   const [addOpen, setAddOpen] = useState(false);
   const [target, setTarget] = useState<{
     member: Enrollment;
@@ -757,10 +759,54 @@ function Members({
         </p>
       )}
       {notice && <p role="status">{notice}</p>}
+      {!archived && enrollments.length > 0 && (
+        <div className="admin-bulk-toolbar">
+          <span role="status">
+            {selected.length} selected · up to 100 per batch
+          </span>
+          <Button
+            variant="outline"
+            disabled={!selected.length}
+            onClick={() => setRemoveOpen(true)}
+          >
+            Remove selected ({selected.length})
+          </Button>
+        </div>
+      )}
       <div className="panel table-wrap">
         <table>
           <thead>
             <tr>
+              <th scope="col" className="admin-selection-cell">
+                <input
+                  type="checkbox"
+                  aria-label="Select up to 100 members"
+                  disabled={archived || !enrollments.length}
+                  checked={
+                    enrollments.length > 0 &&
+                    enrollments
+                      .slice(0, 100)
+                      .every((member) => selected.includes(member.userId))
+                  }
+                  ref={(element) => {
+                    if (element)
+                      element.indeterminate =
+                        selected.length > 0 &&
+                        !enrollments
+                          .slice(0, 100)
+                          .every((member) => selected.includes(member.userId));
+                  }}
+                  onChange={(event) =>
+                    setSelected(
+                      event.target.checked
+                        ? enrollments
+                            .slice(0, 100)
+                            .map((member) => member.userId)
+                        : [],
+                    )
+                  }
+                />
+              </th>
               <th scope="col">Name</th>
               <th scope="col">Email</th>
               <th scope="col">Course role</th>
@@ -772,6 +818,25 @@ function Members({
               const account = users.find((user) => user.id === member.userId);
               return (
                 <tr key={member.userId}>
+                  <td className="admin-selection-cell">
+                    <input
+                      type="checkbox"
+                      aria-label={`Select ${account?.name ?? member.userId}`}
+                      checked={selected.includes(member.userId)}
+                      disabled={
+                        archived ||
+                        (!selected.includes(member.userId) &&
+                          selected.length >= 100)
+                      }
+                      onChange={(event) =>
+                        setSelected((ids) =>
+                          event.target.checked
+                            ? [...ids, member.userId]
+                            : ids.filter((id) => id !== member.userId),
+                        )
+                      }
+                    />
+                  </td>
                   <td>{account?.name ?? `User ${member.userId}`}</td>
                   <td>{account?.email ?? "—"}</td>
                   <td>{member.role}</td>
@@ -808,6 +873,27 @@ function Members({
           </p>
         )}
       </div>
+      {removeOpen && (
+        <RemoveMembers
+          course={course}
+          users={selected.map(
+            (id) =>
+              users.find((user) => user.id === id) ?? {
+                id,
+                name: `User ${id}`,
+                email: "",
+                systemRole: "user",
+              },
+          )}
+          onClose={() => setRemoveOpen(false)}
+          onSaved={() => {
+            setNotice(`${selected.length} members removed.`);
+            setSelected([]);
+            setRemoveOpen(false);
+            result.reload();
+          }}
+        />
+      )}
       {addOpen && (
         <AddMember
           course={course}
@@ -816,6 +902,7 @@ function Members({
           onSaved={() => {
             setAddOpen(false);
             setNotice("Selected members added.");
+            setSelected([]);
             result.reload();
           }}
         />
@@ -835,6 +922,7 @@ function Members({
             setNotice(
               target.action === "remove" ? "Member removed." : "Role updated.",
             );
+            setSelected([]);
             result.reload();
           }}
         />
@@ -1066,6 +1154,80 @@ function MemberEditor({
               : action === "remove"
                 ? "Remove member"
                 : "Save role"}
+          </Button>
+        </div>
+      </form>
+    </Dialog>
+  );
+}
+
+function RemoveMembers({
+  course,
+  users,
+  onClose,
+  onSaved,
+}: {
+  course: AdminCourse;
+  users: User[];
+  onClose: () => void;
+  onSaved: () => void;
+}) {
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  return (
+    <Dialog
+      title={`Remove ${users.length} members`}
+      busy={busy}
+      onClose={onClose}
+    >
+      <form
+        className="stack"
+        onSubmit={async (event) => {
+          event.preventDefault();
+          if (busy) return;
+          setBusy(true);
+          setError("");
+          try {
+            await adminApi.removeMembers(
+              course.id,
+              users.map((user) => user.id),
+            );
+            onSaved();
+          } catch (error) {
+            setError(errorMessage(error));
+            setBusy(false);
+          }
+        }}
+      >
+        <p>
+          Remove these members from {course.code}? They will lose course access.
+          Their accounts, authored content, and submission history will be
+          retained.
+        </p>
+        <ul className="admin-removal-list">
+          {users.map((user) => (
+            <li key={user.id}>
+              <strong>{user.name}</strong>
+              <small>{user.email}</small>
+            </li>
+          ))}
+        </ul>
+        {error && (
+          <p role="alert" className="admin-error">
+            {error}
+          </p>
+        )}
+        <div className="admin-dialog-actions">
+          <Button
+            type="button"
+            variant="outline"
+            disabled={busy}
+            onClick={onClose}
+          >
+            Cancel
+          </Button>
+          <Button disabled={busy}>
+            {busy ? "Removing…" : `Remove ${users.length} members`}
           </Button>
         </div>
       </form>

@@ -138,6 +138,22 @@ export const adminApi = {
       }),
     );
   },
+  async removeMembers(courseId: string, ids: string[]) {
+    if (!ids.length || ids.length > 100)
+      throw new Error("Select between 1 and 100 members.");
+    const userIds = ids.map((id) => Number(id));
+    if (
+      userIds.some((id) => !Number.isInteger(id) || id < 1 || id > 2147483647)
+    )
+      throw new Error("Choose valid members.");
+    if (new Set(userIds).size !== userIds.length)
+      throw new Error("Select each member only once.");
+    await request<void>(
+      `${coursePath(courseId)}/enrollments/bulk-remove`,
+      "POST",
+      { userIds },
+    );
+  },
   removeMember(courseId: string, userId: string) {
     return request<void>(memberPath(courseId, userId), "DELETE");
   },

@@ -5,6 +5,7 @@ import type {
   User,
   Course,
   Dashboard,
+  Announcement,
 } from "@/types";
 import { mockApi } from "./mock";
 const base = import.meta.env.VITE_API_BASE_URL || "/api";
@@ -20,6 +21,7 @@ export async function request<T>(
   path: string,
   method = "GET",
   body?: unknown,
+  onResponse?: (response: Response) => void,
 ): Promise<T> {
   const form = body instanceof FormData;
   const response = await fetch(base + path, {
@@ -37,6 +39,7 @@ export async function request<T>(
         `Request failed (${response.status})`,
     );
   }
+  onResponse?.(response);
   return response.status === 204 ? (undefined as T) : response.json();
 }
 const c = (id: string) => `/courses/${encodeURIComponent(id)}`;
@@ -98,6 +101,20 @@ export async function changePassword(input: {
 }) {
   await request<void>("/auth/change-password", "POST", input);
 }
+type BackendAnnouncement = Omit<Announcement, "id" | "author"> & {
+  id: number;
+  authorId: number;
+};
+export function announcementFromApi(item: BackendAnnouncement): Announcement {
+  return {
+    id: String(item.id),
+    title: item.title,
+    body: item.body,
+    createdAt: item.createdAt,
+    isVisible: item.isVisible,
+    author: "",
+  };
+}
 export const httpApi: LearnFlowApi = {
   me: async () => userFromApi(await request<BackendUser>("/auth/me")),
   login: async (input) =>
@@ -138,9 +155,51 @@ export const httpApi: LearnFlowApi = {
       recentResources: data.recentResources.map(resourceFromApi),
     } satisfies Dashboard;
   },
-  announcements: (id) => request(c(id) + "/announcements"),
-  createAnnouncement: (id, input) =>
-    request(c(id) + "/announcements", "POST", input),
+  announcements: async (id) => {
+    const items: Announcement[] = [];
+    let cursor: string | null = null;
+    const seen = new Set<string>();
+    do {
+      const query =
+        "?limit=100" + (cursor ? "&cursor=" + encodeURIComponent(cursor) : "");
+      let next: string | null = null;
+      const page = await request<BackendAnnouncement[]>(
+        c(id) + "/announcements" + query,
+        "GET",
+        undefined,
+        (response) => {
+          next = response.headers.get("X-Next-Cursor");
+        },
+      );
+      items.push(...page.map(announcementFromApi));
+      cursor = next;
+      if (cursor && seen.has(cursor))
+        throw new Error("Invalid announcement pagination. Please retry.");
+      if (cursor) seen.add(cursor);
+    } while (cursor);
+    return items;
+  },
+  createAnnouncement: async (id, input) =>
+    announcementFromApi(
+      await request<BackendAnnouncement>(
+        c(id) + "/announcements",
+        "POST",
+        input,
+      ),
+    ),
+  updateAnnouncement: async (id, announcementId, input) =>
+    announcementFromApi(
+      await request<BackendAnnouncement>(
+        c(id) + "/announcements/" + encodeURIComponent(announcementId),
+        "PATCH",
+        input,
+      ),
+    ),
+  deleteAnnouncement: (id, announcementId) =>
+    request(
+      c(id) + "/announcements/" + encodeURIComponent(announcementId),
+      "DELETE",
+    ),
   quizzes: (id) => request(c(id) + "/quizzes"),
   createQuiz: (id, input) => request(c(id) + "/quizzes", "POST", input),
   draft: (id, q) => request(c(id) + `/quizzes/${encodeURIComponent(q)}/draft`),
