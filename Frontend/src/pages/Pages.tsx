@@ -17,7 +17,6 @@ import {
 import { api, isMock } from "@/services/api";
 import { demoQuizReview } from "@/services/mock";
 import { useData } from "@/lib/use-data";
-import { useAuth } from "@/App";
 import { useCourse } from "@/layouts/Layouts";
 import { Button } from "@/components/ui/button";
 import type {
@@ -1289,55 +1288,6 @@ function CourseResources() {
           ))}
         </ul>
       )}
-    </>
-  );
-}
-export function Admin() {
-  const { user } = useAuth();
-  if (user?.systemRole !== "admin")
-    return <p className="panel">Administrator access required.</p>;
-  return <AdminContent />;
-}
-function AdminContent() {
-  const r = useData(() => api.adminUsers(), []);
-  return (
-    <>
-      <Title
-        over="ADMINISTRATION"
-        title="Administration"
-        description="Manage the people and courses behind your learning community."
-      />
-      <p className="notice">
-        Initial scaffold. Course creation, archives, enrollment changes, and
-        role editing are pending agreed backend contracts.
-      </p>
-      <section className="panel">
-        <h2>Users</h2>
-        {!r.data ? (
-          <State {...r} />
-        ) : (
-          <div className="table-wrap">
-            <table>
-              <thead>
-                <tr>
-                  <th>Name</th>
-                  <th>Email</th>
-                  <th>System role</th>
-                </tr>
-              </thead>
-              <tbody>
-                {r.data.map((u) => (
-                  <tr key={u.id}>
-                    <td>{u.name}</td>
-                    <td>{u.email}</td>
-                    <td>{u.systemRole}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </section>
     </>
   );
 }

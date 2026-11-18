@@ -4,13 +4,14 @@ export interface User {
   name: string;
   email: string;
   systemRole: "user" | "admin";
+  mustChangePassword?: boolean;
 }
 export interface Course {
   id: string;
   code: string;
   name: string;
   description: string;
-  role: CourseRole;
+  role: CourseRole | null;
   status: "active" | "archived";
 }
 export interface Announcement {
@@ -111,4 +112,17 @@ export interface LearnFlowApi {
   searchResources(id: string, query: string): Promise<ResourceMatch[]>;
   upload(id: string, input: ResourceUpload): Promise<Resource>;
   adminUsers(): Promise<User[]>;
+}
+
+export interface AdminCourse {
+  id: string;
+  code: string;
+  name: string;
+  description: string;
+  status: "active" | "archived";
+}
+export interface Enrollment {
+  courseId: string;
+  userId: string;
+  role: CourseRole;
 }
