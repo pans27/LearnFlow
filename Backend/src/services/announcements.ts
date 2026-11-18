@@ -21,7 +21,7 @@ export const announcementService = {
       if (query.cursor !== undefined && !await announcementDb.find(tx, courseId, query.cursor, manage)) {
         throw new HttpError(400, 'Invalid announcement cursor');
       }
-      const rows = await announcementDb.list(tx, courseId, manage, query);
+      const rows = await announcementDb.list(tx, courseId, manage, { ...query, limit: query.limit + 1 });
       const items = rows.slice(0, query.limit);
       return { items, ...(rows.length > query.limit ? { nextCursor: items[items.length - 1].id } : {}) };
     });

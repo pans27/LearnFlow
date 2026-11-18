@@ -9,10 +9,10 @@ export const announcementDb = {
   find: (tx: Prisma.TransactionClient, courseId: number, announcementId: number, manage: boolean) =>
     tx.announcement.findFirst({ where: { id: announcementId, courseId, ...(manage ? {} : { isVisible: true }) } }),
 
-  // Fetch one extra announcement to determine whether another page exists.
+  // Fetch the requested number of course announcements in newest-first order.
   list: (tx: Prisma.TransactionClient, courseId: number, manage: boolean, query: AnnouncementQuery) =>
     tx.announcement.findMany({ where: { courseId, ...(manage ? {} : { isVisible: true }) },
-      orderBy: newestFirst, take: query.limit + 1,
+      orderBy: newestFirst, take: query.limit,
       ...(query.cursor === undefined ? {} : { cursor: { id: query.cursor }, skip: 1 }) }),
 
   // Insert an announcement authored by the authenticated account.

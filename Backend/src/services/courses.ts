@@ -2,6 +2,7 @@ import { MAX_DASHBOARD_ANNOUNCEMENTS, MAX_DASHBOARD_ASSESSMENTS, MAX_DASHBOARD_R
 import type { Prisma } from '../../generated/prisma/client';
 import type { AccessibleCourseResponse, CourseAccessRecord, CurrentUser, DashboardAssessment, DashboardResponse } from '../types';
 import { courseDb as database } from '../db/courses';
+import { announcementDb } from '../db/announcements';
 import { HttpError } from '../errors';
 
 // Return course metadata and the current user's course-specific role.
@@ -42,7 +43,8 @@ export const courseService = {
       const canManage = instructor && !readOnly;
       const now = new Date();
       const [announcements, assignments, quizzes, resources] = await Promise.all([
-        database.announcements(tx, courseId, instructor), database.assignments(tx, courseId, instructor, now),
+        announcementDb.list(tx, courseId, instructor, { limit: MAX_DASHBOARD_ANNOUNCEMENTS }),
+        database.assignments(tx, courseId, instructor, now),
         database.quizzes(tx, courseId, instructor, now), database.resources(tx, courseId, user.id, instructor),
       ]);
       const assessments: DashboardAssessment[] = [
@@ -56,7 +58,8 @@ export const courseService = {
         permissions: { canPublishAnnouncements: canManage, canCreateAssessments: canManage,
           canManageResources: canManage, canReviewSubmissions: canManage },
         recentAnnouncements: announcements.slice(0, MAX_DASHBOARD_ANNOUNCEMENTS)
-          .map((item) => ({ ...item, createdAt: item.createdAt.toISOString() })),
+          .map((item) => ({ id: item.id, title: item.title, body: item.body,
+            isVisible: item.isVisible, createdAt: item.createdAt.toISOString() })),
         upcomingAssessments: assessments,
         recentResources: resources.slice(0, MAX_DASHBOARD_RESOURCES)
           .map((item) => ({ id: item.id, title: item.title, resourceType: item.resourceType,

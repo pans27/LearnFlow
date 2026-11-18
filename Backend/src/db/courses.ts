@@ -1,4 +1,4 @@
-import { MAX_DASHBOARD_ANNOUNCEMENTS, MAX_DASHBOARD_ASSESSMENTS, MAX_DASHBOARD_RESOURCES } from '../constants/dashboard';
+import { MAX_DASHBOARD_ASSESSMENTS, MAX_DASHBOARD_RESOURCES } from '../constants/dashboard';
 import type { Prisma } from '../../generated/prisma/client';
 import type { CurrentUser, CourseState } from '../types';
 import { HttpError } from '../errors';
@@ -24,13 +24,6 @@ export const courseDb = {
   find: (tx: Prisma.TransactionClient, courseId: number, userId: number) => tx.course.findUnique({
     where: { id: courseId },
     select: { ...courseSelect, enrollments: { where: { userId }, select: { role: true } } },
-  }),
-
-  // Fetch the latest announcements within the dashboard limit permitted for the current dashboard view.
-  announcements: (tx: Prisma.TransactionClient, courseId: number, instructor: boolean) => tx.announcement.findMany({
-    where: { courseId, ...(instructor ? {} : { isVisible: true }) },
-    select: { id: true, title: true, body: true, isVisible: true, createdAt: true },
-    orderBy: recentOrder, take: MAX_DASHBOARD_ANNOUNCEMENTS,
   }),
 
   // Fetch upcoming assignments within the dashboard limit.
