@@ -316,7 +316,9 @@ export const mockApi: LearnFlowApi = {
   },
   async dashboard(id) {
     return {
-      announcements: news(id),
+      announcements: news(id).filter(
+        (a) => check(id).role === "instructor" || a.isVisible !== false,
+      ),
       upcomingAssessments: [
         {
           id: "overdue-practice",
@@ -387,7 +389,9 @@ export const mockApi: LearnFlowApi = {
     };
   },
   async announcements(id) {
-    return [...news(id)];
+    return news(id).filter(
+      (a) => check(id).role === "instructor" || a.isVisible !== false,
+    );
   },
   async createAnnouncement(id, input) {
     if (check(id).role !== "instructor")
@@ -400,6 +404,22 @@ export const mockApi: LearnFlowApi = {
     };
     news(id).unshift(a);
     return a;
+  },
+  async updateAnnouncement(id, announcementId, input) {
+    if (check(id).role !== "instructor")
+      throw Error("Instructor access required");
+    const item = news(id).find((a) => a.id === announcementId);
+    if (!item) throw Error("Announcement not found");
+    Object.assign(item, input);
+    return { ...item };
+  },
+  async deleteAnnouncement(id, announcementId) {
+    if (check(id).role !== "instructor")
+      throw Error("Instructor access required");
+    const items = news(id);
+    const index = items.findIndex((a) => a.id === announcementId);
+    if (index < 0) throw Error("Announcement not found");
+    items.splice(index, 1);
   },
   async quizzes(id) {
     return quizzes(id);

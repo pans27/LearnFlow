@@ -1,3 +1,4 @@
+import { Eye, EyeOff } from "lucide-react";
 import Admin from "@/pages/admin/Admin";
 import { Brand } from "@/components/Brand";
 import { createContext, useContext, useEffect, useState } from "react";
@@ -102,31 +103,38 @@ function Login() {
             maxLength={320}
           />
         </label>
-        <label>
-          Password
-          <input
-            name="password"
-            id="login-password"
-            autoCapitalize="none"
-            autoCorrect="off"
-            spellCheck={false}
-            type={showPassword ? "text" : "password"}
-            required
-            defaultValue={isMock ? "demo-password" : ""}
-            autoComplete="current-password"
-            maxLength={128}
-          />
-        </label>
-        <Button
-          type="button"
-          variant="ghost"
-          size="sm"
-          aria-controls="login-password"
-          aria-pressed={showPassword}
-          onClick={() => setShowPassword((value) => !value)}
-        >
-          {showPassword ? "Hide password" : "Show password"}
-        </Button>
+        <div className="login-password-field">
+          <label htmlFor="login-password">Password</label>
+          <div className="login-password-control">
+            <input
+              name="password"
+              id="login-password"
+              autoCapitalize="none"
+              autoCorrect="off"
+              spellCheck={false}
+              type={showPassword ? "text" : "password"}
+              required
+              defaultValue={isMock ? "demo-password" : ""}
+              autoComplete="current-password"
+              maxLength={128}
+            />
+            <button
+              type="button"
+              className="login-password-toggle"
+              aria-controls="login-password"
+              aria-pressed={showPassword}
+              aria-label={showPassword ? "Hide password" : "Show password"}
+              title={showPassword ? "Hide password" : "Show password"}
+              onClick={() => setShowPassword((value) => !value)}
+            >
+              {showPassword ? (
+                <EyeOff size={20} aria-hidden="true" />
+              ) : (
+                <Eye size={20} aria-hidden="true" />
+              )}
+            </button>
+          </div>
+        </div>
         {error && <p role="alert">{error}</p>}
         <Button className="gloss-button login-submit" disabled={busy}>
           {busy ? "Signing in…" : "Sign in →"}

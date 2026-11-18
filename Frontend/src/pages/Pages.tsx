@@ -145,23 +145,17 @@ function CourseDashboard() {
       <div className="dashboard-grid course-overview">
         <section className="panel recent-announcements">
           <h2>Recent announcements</h2>
-          <p className="list-summary">
-            Latest {latest.length} of {r.data.announcements.length}{" "}
-            announcements
-          </p>
+          <p className="list-summary">Latest course updates</p>
           {latest.length === 0 && <p>No announcements yet.</p>}
           {latest.map((a) => (
             <article className="list-row full-announcement" key={a.id}>
-              <span className="eyebrow">
-                {date(a.createdAt)} · {a.author}
-              </span>
+              <span className="eyebrow">{a.author}</span>
               <h3>{a.title}</h3>
               <p>{a.body}</p>
             </article>
           ))}
           <Link className="see-all" to="announcements">
-            See all announcements ({r.data.announcements.length}){" "}
-            <ArrowRight size={16} />
+            See all announcements <ArrowRight size={16} />
           </Link>
         </section>
         <section className="panel upcoming-assessments">
@@ -208,86 +202,7 @@ function CourseDashboard() {
     </>
   );
 }
-export function Announcements() {
-  const c = useCourse();
-  const { announcementId } = useParams();
-  const r = useData(() => api.announcements(c.id), [c.id]);
-  const [error, setError] = useState("");
-  const [busy, setBusy] = useState(false);
-  if (!r.data) return <State {...r} />;
-  const items = r.data.filter(
-    (a) => !announcementId || a.id === announcementId,
-  );
-  return (
-    <>
-      <Title
-        over=""
-        title="Announcements"
-        description="The latest notes from your course community."
-      />
-      {c.role === "instructor" && !announcementId && (
-        <form
-          className="panel stack"
-          onSubmit={async (e) => {
-            e.preventDefault();
-            const form = e.currentTarget;
-            const f = new FormData(form);
-            setBusy(true);
-            setError("");
-            try {
-              await api.createAnnouncement(c.id, {
-                title: String(f.get("title")).trim(),
-                body: String(f.get("body")).trim(),
-              });
-              form.reset();
-              r.reload();
-            } catch (e) {
-              setError((e as Error).message);
-            } finally {
-              setBusy(false);
-            }
-          }}
-        >
-          <h2>Share an update</h2>
-          <label>
-            Title
-            <input name="title" required maxLength={160} />
-          </label>
-          <label>
-            Message
-            <textarea name="body" required />
-          </label>
-          <Button disabled={busy}>
-            <Plus size={16} /> Publish announcement
-          </Button>
-          {error && <p role="alert">{error}</p>}
-        </form>
-      )}
-      {items.length === 0 ? (
-        <p className="panel">
-          {announcementId ? "Announcement not found." : "No announcements yet."}
-        </p>
-      ) : (
-        items.map((a) => (
-          <article className="panel announcement" key={a.id}>
-            <span className="eyebrow">
-              {date(a.createdAt)} · {a.author}
-            </span>
-            <h2>
-              <Link to={`/courses/${c.id}/announcements/${a.id}`}>
-                {a.title}
-              </Link>
-            </h2>
-            <p>{a.body}</p>
-          </article>
-        ))
-      )}
-      {announcementId && (
-        <Link to={`/courses/${c.id}/announcements`}>← All announcements</Link>
-      )}
-    </>
-  );
-}
+export { default as Announcements } from "./Announcements";
 export function Quizzes() {
   const c = useCourse();
   const { quizId } = useParams();

@@ -62,6 +62,55 @@ try {
     upcomingAssessments: [],
     recentResources: [],
   });
+  const announcement = {
+    id: 31,
+    courseId: 12,
+    authorId: 7,
+    title: "Course update",
+    body: "First paragraph.\nSecond paragraph.",
+    isVisible: false,
+    createdAt: "2026-11-18T12:00:00Z",
+  };
+  const responses = [
+    Response.json([announcement], { headers: { "X-Next-Cursor": "31" } }),
+    Response.json([{ ...announcement, id: 30, isVisible: true }]),
+  ];
+  globalThis.fetch = async (url, options) => {
+    calls.push({ url, options });
+    return responses.shift();
+  };
+  const announcements = await httpApi.announcements("12");
+  assert.deepEqual(
+    announcements.map((a) => a.id),
+    ["31", "30"],
+  );
+  assert.equal(announcements[0].isVisible, false);
+  assert.equal(announcements[0].body, announcement.body);
+  assert.ok(calls.at(-1).url.endsWith("?limit=100&cursor=31"));
+  globalThis.fetch = async (url, options) => {
+    calls.push({ url, options });
+    return response;
+  };
+  response = Response.json(announcement);
+  await httpApi.createAnnouncement("12", {
+    title: announcement.title,
+    body: announcement.body,
+    isVisible: false,
+  });
+  assert.equal(calls.at(-1).options.method, "POST");
+  assert.equal(JSON.parse(calls.at(-1).options.body).isVisible, false);
+  response = Response.json(announcement);
+  await httpApi.updateAnnouncement("12", "31", { isVisible: true });
+  assert.ok(calls.at(-1).url.endsWith("/courses/12/announcements/31"));
+  assert.equal(calls.at(-1).options.method, "PATCH");
+  response = Response.json({ message: "Forbidden" }, { status: 403 });
+  await assert.rejects(
+    httpApi.deleteAnnouncement("12", "31"),
+    (e) => e instanceof ApiError && e.status === 403,
+  );
+  response = new Response(null, { status: 204 });
+  await httpApi.deleteAnnouncement("12", "31");
+  assert.equal(calls.at(-1).options.method, "DELETE");
   response = new Response(null, { status: 204 });
   await changePassword({
     currentPassword: "fixture-old-only",
@@ -76,7 +125,7 @@ try {
   await httpApi.logout();
   assert.ok(calls.at(-1).url.endsWith("/auth/logout"));
   console.log(
-    "PASS: backend user/course mapping, cookie credentials, auth errors, password-change payload, 204 and logout.",
+    "PASS: backend user/course mapping, cookie credentials, auth errors, password-change payload, 204, logout, announcement pagination/mapping/create/edit/delete and permission errors.",
   );
 } finally {
   globalThis.fetch = originalFetch;

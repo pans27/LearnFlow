@@ -172,6 +172,31 @@ try {
     adminApi.updateUser("8", { name: "Test", isAdmin: false }),
     (error) => error.status === 409,
   );
+  response = new Response(null, { status: 204 });
+  await adminApi.removeMembers("12", ["8", "9"]);
+  assert.ok(
+    calls.at(-1).url.endsWith("/admin/courses/12/enrollments/bulk-remove"),
+  );
+  assert.equal(calls.at(-1).options.method, "POST");
+  assert.deepEqual(JSON.parse(calls.at(-1).options.body), { userIds: [8, 9] });
+  const beforeInvalidRemoval = calls.length;
+  await assert.rejects(adminApi.removeMembers("12", []));
+  await assert.rejects(adminApi.removeMembers("12", ["8", "8"]));
+  await assert.rejects(adminApi.removeMembers("12", ["bad"]));
+  await assert.rejects(
+    adminApi.removeMembers(
+      "12",
+      Array.from({ length: 101 }, (_, i) => String(i + 1)),
+    ),
+  );
+  assert.equal(calls.length, beforeInvalidRemoval);
+  for (const status of [403, 409]) {
+    response = Response.json({ message: "Removal rejected" }, { status });
+    await assert.rejects(
+      adminApi.removeMembers("12", ["8"]),
+      (error) => error.status === status,
+    );
+  }
   console.log(
     "PASS: admin user provisioning/mapping, course lifecycle, numeric enrollment IDs, role updates, removal and conflicts.",
   );
