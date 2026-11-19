@@ -8,6 +8,7 @@ import type { AnnouncementCreateData, AnnouncementUpdateData, AnnouncementQuery 
 export type ValidatedLocals = {
   currentUser?: CurrentUser;
   announcementId?: number;
+  resourceId?: number;
   announcementData?: AnnouncementCreateData;
   announcementUpdate?: AnnouncementUpdateData;
   announcementQuery?: AnnouncementQuery;

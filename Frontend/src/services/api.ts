@@ -44,7 +44,7 @@ export async function request<T>(
 }
 const c = (id: string) => `/courses/${encodeURIComponent(id)}`;
 type ApiResource = {
-  id: string;
+  id: number | string;
   title: string;
   resourceType: Resource["resourceType"];
   createdAt?: string;
@@ -52,7 +52,7 @@ type ApiResource = {
 };
 function resourceFromApi(resource: ApiResource): Resource {
   return {
-    id: resource.id,
+    id: String(resource.id),
     name: resource.title,
     createdAt: resource.createdAt,
     description: "",

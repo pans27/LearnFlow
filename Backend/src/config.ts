@@ -18,4 +18,10 @@ export const config = {
   jwtSecret: configuredSecret.length >= 32 ? configuredSecret : 'development-only-jwt-secret-change-me',
   sessionTtlMs,
   authCookie: 'learnflow.sid',
+  s3: {
+    region: process.env.AWS_REGION?.trim() ?? '',
+    bucket: process.env.AWS_S3_BUCKET?.trim() ?? '',
+    accessKeyId: process.env.AWS_ACCESS_KEY_ID?.trim() ?? '',
+    secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY?.trim() ?? '',
+  },
 };

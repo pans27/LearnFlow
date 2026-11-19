@@ -16,7 +16,7 @@ router.use('/admin', adminRoutes);
 router.use('/courses', courseRoutes);
 
 // TODO: Add course-member routes for assignments, quizzes, submissions, and search.
-// TODO(file owner): integrate authorized storage/extraction operations.
+// TODO(file owner): run the extraction worker that reads stored PDFs and writes page text.
 // See ../../learnflow-openapi.yaml for the proposed endpoint contract.
 
 export default router;

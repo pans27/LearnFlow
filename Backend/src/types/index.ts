@@ -21,6 +21,9 @@ export type {
   AnnouncementRecord, AnnouncementResponse, AnnouncementPage,
 } from './announcements';
 export type {
+  StoredResourceType, ExtractionStatus, ResourceRecord, ResourceResponse, PresignedUrlResponse,
+} from './resources';
+export type {
   DashboardAnnouncement, DashboardAssessment, DashboardResource, DashboardPermissions,
   ActiveAssessmentStatistics, DashboardResponse,
 } from './dashboard';

@@ -205,8 +205,8 @@ model Submission {
   @@schema("learnflow")
 }
 
-// TODO(file owner): implement uploads/downloads, S3 keys, extraction workers,
-// and writing extracted pages. APIs must still authorize each course/resource.
+// Uploads and presigned downloads use S3. A worker still needs to read each PDF
+// and write its extracted pages. APIs authorize each course and resource.
 // Store file metadata and extraction status for a course resource.
 model LearningResource {
   id               Int   @id @default(autoincrement()) @map("resource_id")
