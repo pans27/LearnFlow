@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import type { Prisma } from '../../generated/prisma/client';
-import type { CurrentUser, ResourceRecord, StoredResourceType } from '../types';
+import type { CurrentUser, ResourceRecord, StoredResourceType, ResourceFile, ResourceUploadFields } from '../types';
 import { courseDb, withCourseTransaction } from '../db/courses';
 import { resourceDb } from '../db/resources';
 import { requireCourseAccess } from './courses';
@@ -40,7 +40,7 @@ export const resourceService = {
   },
 
   // Store a PDF in S3, then record it for the course and queue text extraction.
-  async upload(courseId: number, user: CurrentUser, file: { filename: string; body: Buffer }, fields: { title: string; resourceType: 'instructor_material' | 'student_note'; isVisible: boolean }) {
+  async upload(courseId: number, user: CurrentUser, file: ResourceFile, fields: ResourceUploadFields) {
     const course = await courseDb.read((tx) => requireCourseAccess(tx, courseId, user));
     requireActiveCourse(course.status);
     const manage = canManage(user, course.role);

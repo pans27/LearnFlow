@@ -1,8 +1,9 @@
 import type { Prisma } from '../../generated/prisma/client';
-import type { ResourceRecord, StoredResourceType } from '../types';
+import type { ResourceRecord, StoredResourceType, ResourceCreateData, ResourceDatabaseRecord } from '../types';
 import { HttpError } from '../errors';
 
-function asRecord(row: Omit<ResourceRecord, 'resourceType' | 'extractionStatus'> & { resourceType: string; extractionStatus: string }): ResourceRecord {
+// Convert database string fields to the resource domain types.
+function asRecord(row: ResourceDatabaseRecord): ResourceRecord {
   return row as ResourceRecord;
 }
 
@@ -34,10 +35,7 @@ export const resourceDb = {
   },
 
   // Store the resource row and its pending extraction job together.
-  create: async (tx: Prisma.TransactionClient, courseId: number, ownerId: number, data: {
-    title: string; resourceType: 'instructor_material' | 'student_note'; originalFilename: string;
-    fileSizeBytes: number; s3Key: string; isVisible: boolean;
-  }) => {
+  create: async (tx: Prisma.TransactionClient, courseId: number, ownerId: number, data: ResourceCreateData) => {
     const resource = asRecord(await tx.learningResource.create({ data: { courseId, ownerId, ...data, fileSizeBytes: BigInt(data.fileSizeBytes),
       mimeType: 'application/pdf', extractionStatus: 'pending' }, select: resourceSelect }));
     await tx.extractionJob.create({ data: { courseId, resourceId: resource.id } });
@@ -50,5 +48,3 @@ export const resourceDb = {
     if (result.count !== 1) throw new HttpError(404, 'Resource not found');
   },
 };
-
-export type { ResourceRecord };
