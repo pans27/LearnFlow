@@ -1,6 +1,7 @@
 import {
   studentResourceAccept,
   validateResourceFile,
+  validateBackendResourceFile,
 } from "@/lib/resource-files";
 import { DueDate } from "@/components/DueDate";
 import { useRef, useState } from "react";
@@ -14,7 +15,8 @@ import {
   Search,
   X,
 } from "lucide-react";
-import { api, isMock } from "@/services/api";
+import { api, isMock, resourceFileUrl } from "@/services/api";
+import { useAuth } from "@/App";
 import { demoQuizReview } from "@/services/mock";
 import { useData } from "@/lib/use-data";
 import { useCourse } from "@/layouts/Layouts";
@@ -921,6 +923,10 @@ export function Resources() {
 
 function CourseResources() {
   const c = useCourse();
+  const { user } = useAuth();
+  const canUpload =
+    c.status === "active" && (c.role !== null || user?.systemRole === "admin");
+  const [fileBusy, setFileBusy] = useState<string | null>(null);
   const [query, setQuery] = useState("");
   const searchInput = useRef<HTMLInputElement>(null);
   const [search, setSearch] = useState("");
@@ -939,7 +945,7 @@ function CourseResources() {
     }
     const [resources, pdfResults] = await Promise.all([
       api.resources(c.id),
-      api.searchResources(c.id, search),
+      isMock ? api.searchResources(c.id, search) : Promise.resolve([]),
     ]);
     const results = new Map(
       pdfResults.map((result) => [result.resource.id, result]),
@@ -983,8 +989,16 @@ function CourseResources() {
           <Search size={18} aria-hidden="true" />
           <input
             ref={searchInput}
-            placeholder="Search file names or PDF text…"
-            aria-label="Search file names or PDF text"
+            placeholder={
+              isMock
+                ? "Search file names or PDF text…"
+                : "Search resource titles…"
+            }
+            aria-label={
+              isMock
+                ? "Search file names or PDF text"
+                : "Search resource titles"
+            }
             value={query}
             onChange={(e) => {
               setQuery(e.target.value);
@@ -1014,10 +1028,19 @@ function CourseResources() {
           use “authentication” or “API” in the sample PDFs.
         </p>
       )}
+      {!isMock && (
+        <p className="notice resource-notice">
+          PDF uploads up to 10 MB. Search currently matches resource titles.
+        </p>
+      )}
+      {c.status === "archived" && (
+        <p className="notice">Archived course. Resources are read-only.</p>
+      )}
       <div className="resource-list-controls">
         <Button
           type="button"
           aria-haspopup="dialog"
+          disabled={!canUpload}
           onClick={() => {
             setMessage("");
             setUploadError("");
@@ -1051,7 +1074,9 @@ function CourseResources() {
             setBusy(true);
             setUploadError("");
             try {
-              validateResourceFile(file, c.role);
+              if (!canUpload) throw new Error("This course is read-only.");
+              if (isMock) validateResourceFile(file, c.role);
+              else validateBackendResourceFile(file);
               await api.upload(c.id, {
                 file,
                 title: String(data.get("title")).trim(),
@@ -1082,13 +1107,21 @@ function CourseResources() {
             <input name="title" required maxLength={160} />
           </label>
           <label>
-            {c.role === "student"
-              ? "File (PDF or Word · up to 10 MB)"
-              : "File (any format · up to 10 MB)"}
+            {!isMock
+              ? "File (PDF · up to 10 MB)"
+              : c.role === "student"
+                ? "File (PDF or Word · up to 10 MB)"
+                : "File (any format · up to 10 MB)"}
             <input
               name="file"
               type="file"
-              accept={c.role === "student" ? studentResourceAccept : undefined}
+              accept={
+                !isMock
+                  ? ".pdf,application/pdf"
+                  : c.role === "student"
+                    ? studentResourceAccept
+                    : undefined
+              }
               required
             />
           </label>
@@ -1123,7 +1156,9 @@ function CourseResources() {
       ) : r.data.length === 0 ? (
         <p className="panel">
           {search
-            ? "No files or PDF text matched your search."
+            ? isMock
+              ? "No files or PDF text matched your search."
+              : "No resource titles matched your search."
             : "No resources yet."}
         </p>
       ) : (
@@ -1169,6 +1204,62 @@ function CourseResources() {
                     )}
                   </div>
                 </div>
+                {!isMock && (
+                  <div className="actions resource-row-actions">
+                    {(["preview", "download"] as const).map((action) => (
+                      <Button
+                        key={action}
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        disabled={fileBusy !== null}
+                        onClick={async () => {
+                          const key = resource.id + action;
+                          const preview =
+                            action === "preview"
+                              ? window.open("about:blank", "_blank")
+                              : null;
+                          if (action === "preview" && !preview) {
+                            setMessage(
+                              "Allow pop-ups for this site to open a PDF preview.",
+                            );
+                            return;
+                          }
+                          if (preview) preview.opener = null;
+                          setFileBusy(key);
+                          setMessage("");
+                          try {
+                            const { url } = await resourceFileUrl(
+                              c.id,
+                              resource.id,
+                              action,
+                            );
+                            if (preview) preview.location.replace(url);
+                            else {
+                              const link = document.createElement("a");
+                              link.href = url;
+                              link.rel = "noopener noreferrer";
+                              document.body.append(link);
+                              link.click();
+                              link.remove();
+                            }
+                          } catch (error) {
+                            preview?.close();
+                            setMessage((error as Error).message);
+                          } finally {
+                            setFileBusy(null);
+                          }
+                        }}
+                      >
+                        {fileBusy === resource.id + action
+                          ? "Loading…"
+                          : action === "preview"
+                            ? "Open PDF"
+                            : "Download"}
+                      </Button>
+                    ))}
+                  </div>
+                )}
                 {resource.demoFile && (
                   <div className="actions resource-row-actions">
                     {resource.demoFile.previewable && (

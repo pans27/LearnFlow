@@ -19,6 +19,10 @@ services:
   api:
     build: .
     environment:
+      AWS_REGION: ${AWS_REGION:-}
+      AWS_S3_BUCKET: ${AWS_S3_BUCKET:-}
+      AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID:-}
+      AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY:-}
       NODE_ENV: development
       PORT: 3000
       DATABASE_URL: postgresql://learnflow:learnflow_dev@db:5432/learnflow?schema=learnflow

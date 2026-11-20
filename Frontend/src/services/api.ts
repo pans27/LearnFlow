@@ -115,6 +115,19 @@ export function announcementFromApi(item: BackendAnnouncement): Announcement {
     author: "",
   };
 }
+export async function resourceFileUrl(
+  courseId: string,
+  resourceId: string,
+  action: "preview" | "download",
+) {
+  const result = await request<{ url: string; expiresAt: string }>(
+    c(courseId) + "/resources/" + encodeURIComponent(resourceId) + "/" + action,
+  );
+  const url = new URL(result.url);
+  if (url.protocol !== "https:")
+    throw new Error("The file link is invalid. Please try again.");
+  return result;
+}
 export const httpApi: LearnFlowApi = {
   me: async () => userFromApi(await request<BackendUser>("/auth/me")),
   login: async (input) =>
