@@ -19,7 +19,8 @@ that are not implemented yet.
 | Announcements | Implemented: course-scoped list, read, create, edit, delete, visibility, and cursor pagination |
 | Assignments and quizzes | Database and dashboard summaries exist; standalone assessment endpoints are not implemented |
 | Submissions and grading | Database and dashboard statistics exist; standalone endpoints are not implemented |
-| Resources and PDF search | Database and dashboard metadata exist; upload, extraction, search, preview, and download endpoints are not implemented |
+| Resources | Implemented: list, upload, detail, preview/download URLs, and deletion backed by S3 |
+| PDF extraction and search | Uploads create pending extraction jobs; extraction workers and search endpoints are not implemented |
 
 The health endpoint checks process liveness; use `npm run db:check` to check the
 database connection.
@@ -153,7 +154,7 @@ Types follow `a2`: raw body fields are optional, validated creation data has
 required fields, and plain object types describe records and responses.
 Controllers read named validation results from `res.locals as ValidatedLocals`.
 The `types/index.ts` file re-exports domain types so existing imports stay simple.
-Add `assignments.ts`, `quizzes.ts`, and `resources.ts` as those features are implemented.
+Add `assignments.ts` and `quizzes.ts` as those features are implemented.
 Course operations check status and membership without explicitly locking the course row.
 Transactions keep related writes, including bulk enrollment changes, atomic; an operation
 already in progress may finish after archival or a membership change.
@@ -334,6 +335,27 @@ without a cursor if it becomes stale. The header is omitted on the last page.
 Separate-origin browser clients must expose this response header in their CORS
 configuration. Dashboard announcements continue using the dashboard limit.
 
+## Resource endpoints
+
+All routes require a session and course access. Regular users must be enrolled in an active course; administrators may read archived courses, but uploads and deletion require an active course.
+
+| Method | Path | Behavior |
+| --- | --- | --- |
+| GET | `/api/courses/:courseId/resources` | Return all visible resources; optional `resourceType` filter; no pagination |
+| POST | `/api/courses/:courseId/resources` | Upload multipart PDF and return the resource with 201 |
+| GET | `/api/courses/:courseId/resources/:resourceId` | Return metadata and extraction status |
+| GET | `/api/courses/:courseId/resources/:resourceId/preview` | Return `{ url, expiresAt }` for inline preview, valid for 300 seconds |
+| GET | `/api/courses/:courseId/resources/:resourceId/download` | Return `{ url, expiresAt }` for attachment download, valid for 300 seconds |
+| DELETE | `/api/courses/:courseId/resources/:resourceId` | Delete an authorized resource and its S3 object; return 204 |
+
+Uploads accept `file` (a nonempty PDF up to 10 MB), `title` (1?200 trimmed characters), `resourceType` (`instructor_material` or `student_note`), and optional `visibility` (`visible` by default, or `hidden`). Students may upload student notes; instructors and administrators may also upload instructor materials. Uploads create resource metadata and a pending extraction job atomically after storing the PDF in S3; extraction itself is not implemented.
+
+Readers see shared resources and their own private files. Instructors and administrators also see hidden instructor materials and assignment files, but other users' private student notes stay private. Deletion requires ownership or instructor/admin permission and visibility of the resource. The dashboard reuses this visibility filter and returns at most five resources without storage keys.
+
+Responses contain `id`, `title`, `resourceType`, `ownerId`, `visibility`, `extractionStatus`, `fileKey`, and `createdAt`. Metadata updates (`PATCH`) and PDF search remain planned.
+
+Set `AWS_REGION`, `AWS_S3_BUCKET`, `AWS_ACCESS_KEY_ID`, and `AWS_SECRET_ACCESS_KEY` in `Backend/.env` for local development or Docker Compose. The configured AWS credentials need object upload, read, and delete access to the bucket. S3 operations require these settings; metadata reads do not. Rebuild/recreate the API container after changing its environment.
+
 ## Team integration TODOs
 
 Authentication integration:
@@ -347,8 +369,8 @@ Authentication integration:
 
 File-processing owner:
 
-- Implement authorized storage uploads/downloads, PDF extraction workers, and
-  writes to `learning_resources`, `resource_pages`, and `extraction_jobs`.
+- Storage upload, authorized preview/download, resource deletion, and pending extraction job creation are connected.
+- Implement PDF extraction workers to update job/resource statuses and write `resource_pages`.
 - Integrate final submission archival with S3 before marking submissions finalized.
   No S3 keys or extracted PDF content are fabricated by these endpoints.
 

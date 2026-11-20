@@ -2771,28 +2771,20 @@ paths:
                 $ref: '#/components/schemas/Error'
   /api/courses/{courseId}/resources:
     get:
-      x-implementation-status: planned
+      x-implementation-status: implemented
       tags:
       - Resources
       operationId: get_api_courses_courseId_resources
-      summary: "[Planned] List course resources"
+      summary: "List course resources"
+      description: List all matching resources without pagination; visible files and own private files are included, plus hidden instructor materials and assignment files for instructors or admins.
       parameters:
       - $ref: '#/components/parameters/courseId'
-      - name: limit
-        in: query
-        required: false
-        schema:
-          type: integer
-      - name: cursor
-        in: query
-        required: false
-        schema:
-          type: string
       - name: resourceType
         in: query
         required: false
         schema:
           type: string
+          enum: [instructor_material, student_note, assignment_file]
       security:
       - sessionCookie: []
       responses:
@@ -2829,11 +2821,12 @@ paths:
               schema:
                 $ref: '#/components/schemas/Error'
     post:
-      x-implementation-status: planned
+      x-implementation-status: implemented
       tags:
       - Resources
       operationId: post_api_courses_courseId_resources
-      summary: "[Planned] Upload PDF resource"
+      summary: "Upload PDF resource"
+      description: Upload one nonempty PDF up to 10 MB to S3 and create a resource and pending extraction job. Instructors and admins may upload instructor materials; students may upload student notes. The course must be active; PDF extraction is not implemented.
       parameters:
       - $ref: '#/components/parameters/courseId'
       security:
@@ -2850,6 +2843,8 @@ paths:
                   format: binary
                 title:
                   type: string
+                  minLength: 1
+                  maxLength: 200
                 resourceType:
                   type: string
                   enum:
@@ -2857,6 +2852,7 @@ paths:
                   - student_note
                 visibility:
                   type: string
+                  default: visible
                   enum:
                   - visible
                   - hidden
@@ -2895,6 +2891,13 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
+        '409':
+          description: Reactivate this course before changing it.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
   /api/courses/{courseId}/resources/search:
     get:
       x-implementation-status: planned
@@ -2947,11 +2950,12 @@ paths:
                 $ref: '#/components/schemas/Error'
   /api/courses/{courseId}/resources/{resourceId}:
     get:
-      x-implementation-status: planned
+      x-implementation-status: implemented
       tags:
       - Resources
       operationId: get_api_courses_courseId_resources_resourceId
-      summary: "[Planned] Get resource and extraction status"
+      summary: "Get resource and extraction status"
+      description: Return resource metadata and extraction status after checking course membership and resource visibility; admins may access archived courses.
       parameters:
       - $ref: '#/components/parameters/courseId'
       - $ref: '#/components/parameters/resourceId'
@@ -3047,11 +3051,12 @@ paths:
               schema:
                 $ref: '#/components/schemas/Error'
     delete:
-      x-implementation-status: planned
+      x-implementation-status: implemented
       tags:
       - Resources
       operationId: delete_api_courses_courseId_resources_resourceId
-      summary: "[Planned] Delete resource"
+      summary: "Delete resource"
+      description: Delete a visible resource owned by the caller or managed by an instructor or admin, then delete its S3 object. The course must be active; private student notes remain restricted to their owner.
       parameters:
       - $ref: '#/components/parameters/courseId'
       - $ref: '#/components/parameters/resourceId'
@@ -3084,13 +3089,21 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
+        '409':
+          description: Reactivate this course before changing it.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
   /api/courses/{courseId}/resources/{resourceId}/preview:
     get:
-      x-implementation-status: planned
+      x-implementation-status: implemented
       tags:
       - Resources
       operationId: get_api_courses_courseId_resources_resourceId_preview
-      summary: "[Planned] Get S3 preview presigned URL"
+      summary: "Get S3 preview presigned URL"
+      description: Authorize resource access and return a presigned S3 GET URL valid for 300 seconds, with an inline disposition for preview or attachment disposition for download.
       parameters:
       - $ref: '#/components/parameters/courseId'
       - $ref: '#/components/parameters/resourceId'
@@ -3129,11 +3142,12 @@ paths:
                 $ref: '#/components/schemas/Error'
   /api/courses/{courseId}/resources/{resourceId}/download:
     get:
-      x-implementation-status: planned
+      x-implementation-status: implemented
       tags:
       - Resources
       operationId: get_api_courses_courseId_resources_resourceId_download
-      summary: "[Planned] Get S3 download presigned URL"
+      summary: "Get S3 download presigned URL"
+      description: Authorize resource access and return a presigned S3 GET URL valid for 300 seconds, with an inline disposition for preview or attachment disposition for download.
       parameters:
       - $ref: '#/components/parameters/courseId'
       - $ref: '#/components/parameters/resourceId'
@@ -3751,11 +3765,18 @@ components:
           - failed
         fileKey:
           type: string
+        createdAt:
+          type: string
+          format: date-time
       required:
       - id
       - title
       - resourceType
       - extractionStatus
+      - ownerId
+      - visibility
+      - fileKey
+      - createdAt
     SearchResult:
       type: object
       properties:
@@ -3781,6 +3802,7 @@ components:
           format: date-time
       required:
       - url
+      - expiresAt
     AccessibleCourse:
       allOf:
       - $ref: '#/components/schemas/Course'
