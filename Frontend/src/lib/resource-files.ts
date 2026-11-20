@@ -13,3 +13,10 @@ export function validateResourceFile(
     throw new Error("Choose a nonempty file up to 10 MB.");
   }
 }
+
+export function validateBackendResourceFile(file: File) {
+  if (!/\.pdf$/i.test(file.name))
+    throw new Error("Choose a PDF file. Other formats are not supported yet.");
+  if (!file.size || file.size > 10 * 1024 * 1024)
+    throw new Error("Choose a nonempty PDF up to 10 MB.");
+}

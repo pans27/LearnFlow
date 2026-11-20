@@ -124,6 +124,58 @@ try {
   );
   await httpApi.logout();
   assert.ok(calls.at(-1).url.endsWith("/auth/logout"));
+  const { resourceFileUrl } = await server.ssrLoadModule(
+    "/src/services/api.ts",
+  );
+  const { validateBackendResourceFile } = await server.ssrLoadModule(
+    "/src/lib/resource-files.ts",
+  );
+  const pdf = new File(["%PDF-1.4 fixture"], "fixture.pdf", {
+    type: "application/pdf",
+  });
+  validateBackendResourceFile(pdf);
+  assert.throws(() =>
+    validateBackendResourceFile(new File(["word"], "notes.docx")),
+  );
+  assert.throws(() => validateBackendResourceFile(new File([], "empty.pdf")));
+  response = Response.json({
+    id: 42,
+    title: "Lecture",
+    resourceType: "instructor_material",
+    extractionStatus: "pending",
+  });
+  const uploaded = await httpApi.upload("12", {
+    file: pdf,
+    title: "Lecture",
+    resourceType: "instructor_material",
+  });
+  assert.equal(uploaded.id, "42");
+  assert.equal(uploaded.status, "pending");
+  assert.ok(calls.at(-1).options.body instanceof FormData);
+  assert.equal(calls.at(-1).options.body.get("title"), "Lecture");
+  assert.equal(calls.at(-1).options.headers, undefined);
+  for (const action of ["preview", "download"]) {
+    response = Response.json({
+      url: "https://example.test/file.pdf",
+      expiresAt: "2026-11-20T20:00:00Z",
+    });
+    assert.equal(
+      (await resourceFileUrl("12", "42", action)).url,
+      "https://example.test/file.pdf",
+    );
+    assert.ok(calls.at(-1).url.endsWith(`/courses/12/resources/42/${action}`));
+    assert.equal(calls.at(-1).options.credentials, "include");
+  }
+  response = Response.json({ url: "javascript:alert(1)" });
+  await assert.rejects(resourceFileUrl("12", "42", "preview"));
+  response = Response.json({ message: "Forbidden" }, { status: 403 });
+  await assert.rejects(
+    resourceFileUrl("12", "42", "download"),
+    (e) => e.status === 403,
+  );
+  console.log(
+    "PASS: resource upload multipart payload, numeric IDs, PDF validation, preview/download links and authorization errors.",
+  );
   console.log(
     "PASS: backend user/course mapping, cookie credentials, auth errors, password-change payload, 204, logout, announcement pagination/mapping/create/edit/delete and permission errors.",
   );
