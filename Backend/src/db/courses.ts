@@ -3,6 +3,7 @@ import type { Prisma } from '../../generated/prisma/client';
 import type { CurrentUser, CourseState } from '../types';
 import { HttpError } from '../errors';
 import { getPrisma } from '../database';
+import { visibleResources } from './resources';
 
 const courseSelect = { id: true, name: true, courseCode: true, description: true, status: true } satisfies Prisma.CourseSelect;
 const recentOrder = [{ createdAt: 'desc' }, { id: 'desc' }] satisfies Prisma.AnnouncementOrderByWithRelationInput[];
@@ -42,8 +43,7 @@ export const courseDb = {
 
   // Fetch recent visible resources, the user's private resources, and instructor-managed materials.
   resources: (tx: Prisma.TransactionClient, courseId: number, userId: number, instructor: boolean) => tx.learningResource.findMany({
-    where: { courseId, OR: [{ isVisible: true }, { ownerId: userId },
-      ...(instructor ? [{ resourceType: { in: ['instructor_material', 'assignment_file'] } }] : [])] },
+    where: visibleResources(courseId, userId, instructor),
     select: { id: true, title: true, resourceType: true, ownerId: true, isVisible: true, extractionStatus: true, createdAt: true },
     orderBy: recentOrder, take: MAX_DASHBOARD_RESOURCES,
   }),
