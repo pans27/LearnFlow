@@ -1,13 +1,7 @@
 import Busboy from 'busboy';
 import type { Request } from 'express';
+import type { UploadedPdf } from '../types';
 import { HttpError } from '../errors';
-
-export type UploadedPdf = {
-  filename: string;
-  mimeType: string;
-  body: Buffer;
-  fields: Record<string, string>;
-};
 
 // Read one multipart PDF and its text fields from the request.
 export function readPdfUpload(req: Request): Promise<UploadedPdf> {

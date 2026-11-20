@@ -1,6 +1,7 @@
 import { DeleteObjectCommand, GetObjectCommand, PutObjectCommand, S3Client } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import { config } from '../config';
+import type { PresignedUrlResponse } from '../types';
 import { HttpError } from '../errors';
 
 const URL_TTL_SECONDS = 300;
@@ -33,7 +34,7 @@ export async function deleteObject(key: string): Promise<void> {
 }
 
 // Sign a short-lived GET URL for inline preview or a downloaded file.
-export async function signedGetUrl(key: string, filename: string, download: boolean): Promise<{ url: string; expiresAt: string }> {
+export async function signedGetUrl(key: string, filename: string, download: boolean): Promise<PresignedUrlResponse> {
   const { bucket } = settings();
   const safeName = filename.replace(/["\r\n]/g, '');
   const disposition = `${download ? 'attachment' : 'inline'}; filename="${safeName}"`;

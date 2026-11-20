@@ -1,14 +1,7 @@
+import type { ResourceUploadFields } from '../types';
 import { HttpError } from '../errors';
 
 const MAX_PDF_BYTES = 10 * 1024 * 1024;
-
-export type ResourceType = 'instructor_material' | 'student_note';
-
-export type ResourceUploadFields = {
-  title: string;
-  resourceType: ResourceType;
-  isVisible: boolean;
-};
 
 // Reject anything that is not a nonempty PDF within the upload limit.
 export function assertPdf(filename: string, mimeType: string, body: Buffer): void {

@@ -21,6 +21,7 @@ export type {
   AnnouncementRecord, AnnouncementResponse, AnnouncementPage,
 } from './announcements';
 export type {
+  ResourceType, ResourceUploadFields, ResourceFile, UploadedPdf, ResourceCreateData, ResourceDatabaseRecord,
   StoredResourceType, ExtractionStatus, ResourceRecord, ResourceResponse, PresignedUrlResponse,
 } from './resources';
 export type {

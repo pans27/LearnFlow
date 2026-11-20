@@ -1,3 +1,38 @@
+// Upload inputs, validated metadata, database records, and resource responses.
+export type ResourceType = 'instructor_material' | 'student_note';
+
+export type ResourceUploadFields = {
+  title: string;
+  resourceType: ResourceType;
+  isVisible: boolean;
+};
+
+export type ResourceFile = {
+  filename: string;
+  body: Buffer;
+};
+
+export type UploadedPdf = {
+  filename: string;
+  mimeType: string;
+  body: Buffer;
+  fields: Record<string, string>;
+};
+
+export type ResourceCreateData = {
+  title: string;
+  resourceType: ResourceType;
+  originalFilename: string;
+  fileSizeBytes: number;
+  s3Key: string;
+  isVisible: boolean;
+};
+
+export type ResourceDatabaseRecord = Omit<ResourceRecord, 'resourceType' | 'extractionStatus'> & {
+  resourceType: string;
+  extractionStatus: string;
+};
+
 export type StoredResourceType = 'instructor_material' | 'student_note' | 'assignment_file';
 export type ExtractionStatus = 'pending' | 'processing' | 'completed' | 'failed';
 
