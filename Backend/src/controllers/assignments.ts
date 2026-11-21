@@ -16,7 +16,7 @@ function assignmentResponse(item: AssignmentRecord): AssignmentResponse {
 // Return submission ownership and timing without revealing internal object keys.
 function submissionResponse(item: AssignmentSubmissionRecord): AssignmentSubmissionResponse {
   return { id: item.id, courseId: item.courseId, assignmentId: item.assignmentId, studentId: item.studentId,
-    originalFilename: item.originalFilename, student: item.student, submittedAt: item.submittedAt.toISOString() };
+    originalFilename: item.originalFilename, student: item.student, mark: item.mark, submittedAt: item.submittedAt.toISOString() };
 }
 
 // List assignments visible to the current course member.
@@ -66,6 +66,14 @@ export const own: RequestHandler = handleRequest(async (_req, res) => {
 // List current submissions with student identities for course managers.
 export const submissions: RequestHandler = handleRequest(async (_req, res) => {
   res.json((await service.submissions(requireId(res, 'courseId'), requireId(res, 'assignmentId'), requireUser(res))).map(submissionResponse));
+});
+
+// Save an instructor-assigned mark and return the updated submission metadata.
+export const grade: RequestHandler = handleRequest(async (_req, res) => {
+  const { assignmentGrade } = res.locals as ValidatedLocals;
+  if (!assignmentGrade) throw new Error('Missing validated assignment grade');
+  res.json(submissionResponse(await service.grade(requireId(res, 'courseId'), requireId(res, 'assignmentId'),
+    requireId(res, 'submissionId'), requireUser(res), assignmentGrade.mark)));
 });
 
 // Return an authorized short-lived download URL for the current submission file.

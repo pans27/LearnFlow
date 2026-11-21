@@ -108,10 +108,10 @@ export const assignmentService = {
   // Return the caller's current submission without exposing another student's file.
   own(courseId: number, id: number, user: CurrentUser) {
     return courseDb.read(async (tx) => {
-      await accessibleAssignment(tx, courseId, id, user);
+      const { course, assignment } = await accessibleAssignment(tx, courseId, id, user);
       const item = await database.own(tx, courseId, id, user.id);
       if (!item) throw new HttpError(404, 'Submission not found');
-      return item;
+      return { ...item, mark: user.isAdmin || course.role === 'instructor' || assignment.gradesVisible ? item.mark : null };
     });
   },
 
@@ -121,6 +121,18 @@ export const assignmentService = {
       await requireManager(tx, courseId, user);
       await accessibleAssignment(tx, courseId, id, user);
       return database.submissions(tx, courseId, id);
+    });
+  },
+
+  // Grade a student's current submission as an instructor or administrator in an active course.
+  grade(courseId: number, id: number, submissionId: number, user: CurrentUser, mark: number | null) {
+    return database.write(async (tx) => {
+      await requireManager(tx, courseId, user, true);
+      await accessibleAssignment(tx, courseId, id, user);
+      const item = await database.submission(tx, courseId, id, submissionId);
+      if (!item) throw new HttpError(404, 'Submission not found');
+      await database.lockSubmission(tx, id, item.studentId);
+      return database.grade(tx, courseId, id, submissionId, mark);
     });
   },
 

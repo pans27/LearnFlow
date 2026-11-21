@@ -4,6 +4,8 @@ export type AssignmentBody = {
   dueAt?: string | null;
   isVisible?: boolean;
   allowResubmission?: boolean;
+  gradesVisible?: boolean;
+  maxMark?: number;
 };
 
 export type AssignmentCreateData = {
@@ -12,6 +14,8 @@ export type AssignmentCreateData = {
   dueAt?: Date | null;
   isVisible: boolean;
   allowResubmission: boolean;
+  gradesVisible: boolean;
+  maxMark: number;
 };
 
 export type AssignmentUpdateData = Partial<AssignmentCreateData>;
@@ -31,6 +35,8 @@ export type AssignmentRecord = {
   dueAt: Date | null;
   isVisible: boolean;
   allowResubmission: boolean;
+  gradesVisible: boolean;
+  maxMark: number;
   createdAt: Date;
   updatedAt: Date;
 };
@@ -49,6 +55,7 @@ export type AssignmentSubmissionRecord = {
   s3Key: string;
   originalFilename: string;
   submittedAt: Date;
+  mark: number | null;
   student: { id: number; name: string; email: string };
 };
 
@@ -59,4 +66,12 @@ export type AssignmentSubmissionResponse = Omit<AssignmentSubmissionRecord, 's3K
 export type AssignmentSubmissionData = {
   s3Key: string;
   originalFilename: string;
+};
+
+export type AssignmentGradeBody = {
+  mark?: number | null;
+};
+
+export type AssignmentGradeData = {
+  mark: number | null;
 };

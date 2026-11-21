@@ -1610,7 +1610,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/Error'
       description: Requires course access; students see published assignments only. Instructors/admins manage assignments
-        in active courses. No pagination. Deletion returns 409 if submissions exist.
+        in active courses. No pagination. Deletion returns 409 if submissions exist. gradesVisible defaults to false.
   /api/courses/{courseId}/assignments/{assignmentId}:
     get:
       x-implementation-status: implemented
@@ -1729,7 +1729,8 @@ paths:
               schema:
                 $ref: '#/components/schemas/Error'
       description: Requires course access; students see published assignments only. Instructors/admins manage assignments
-        in active courses. No pagination. Deletion returns 409 if submissions exist.
+        in active courses. No pagination. Deletion returns 409 if submissions exist. Set gradesVisible=true to release
+        stored marks or false to hide them again; omitted settings remain unchanged.
     delete:
       x-implementation-status: implemented
       tags:
@@ -1921,7 +1922,8 @@ paths:
       operationId: get_api_courses_courseId_assignments_assignmentId_submissions_me
       summary: Get own assignment submission
       description: Return the session user current submission after checking course access and assignment visibility;
-        404 if none exists.
+        404 if none exists. Marks are null until gradesVisible is enabled; instructors and admins can always see their
+        own marks.
       parameters:
       - $ref: '#/components/parameters/courseId'
       - $ref: '#/components/parameters/assignmentId'
@@ -2028,6 +2030,71 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
+  /api/courses/{courseId}/assignments/{assignmentId}/submissions/{submissionId}:
+    patch:
+      x-implementation-status: implemented
+      tags:
+      - Assignments
+      operationId: patch_api_courses_courseId_assignments_assignmentId_submissions_submissionId
+      summary: Grade current assignment submission
+      description: Requires instructor or admin access to an active course. Saves a nonnegative finite mark, or null
+        to clear it. Does not change submittedAt. Reuploads clear the previous mark. Instructors always see marks;
+        students see them only when assignment gradesVisible is true.
+      parameters:
+      - $ref: '#/components/parameters/courseId'
+      - $ref: '#/components/parameters/assignmentId'
+      - $ref: '#/components/parameters/submissionId'
+      security:
+      - sessionCookie: []
+      responses:
+        '200':
+          description: Graded current submission
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AssignmentSubmission'
+        '400':
+          description: Invalid input
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '409':
+          description: Archived course, passed deadline, disabled resubmission, or assignment with submissions
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AssignmentGrade'
   /api/courses/{courseId}/quizzes:
     get:
       x-implementation-status: planned
@@ -3699,6 +3766,8 @@ components:
       - allowResubmission
       - createdAt
       - updatedAt
+      - gradesVisible
+      - maxMark
       properties:
         id: &id001
           type: integer
@@ -3731,6 +3800,16 @@ components:
         updatedAt:
           type: string
           format: date-time
+        gradesVisible:
+          type: boolean
+          description: Release stored marks to students; instructors and admins can always see marks.
+          default: false
+        maxMark:
+          type: number
+          minimum: 0
+          exclusiveMinimum: true
+          description: Positive finite points maximum; awarded marks may exceed it for bonus credit.
+          default: 100
     AssignmentCreate:
       type: object
       additionalProperties: false
@@ -3742,6 +3821,16 @@ components:
         dueAt: *id004
         isVisible: *id005
         allowResubmission: *id006
+        gradesVisible:
+          type: boolean
+          description: Release stored marks to students; instructors and admins can always see marks.
+          default: false
+        maxMark:
+          type: number
+          minimum: 0
+          exclusiveMinimum: true
+          description: Positive finite points maximum; awarded marks may exceed it for bonus credit.
+          default: 100
     AssignmentUpdate:
       type: object
       additionalProperties: false
@@ -3763,6 +3852,14 @@ components:
           type: boolean
         allowResubmission:
           type: boolean
+        gradesVisible:
+          type: boolean
+          description: Release stored marks to students; instructors and admins can always see marks.
+        maxMark:
+          type: number
+          minimum: 0
+          exclusiveMinimum: true
+          description: Positive finite points maximum; awarded marks may exceed it for bonus credit.
     AssignmentSubmission:
       type: object
       required:
@@ -3773,6 +3870,7 @@ components:
       - originalFilename
       - submittedAt
       - student
+      - mark
       properties:
         id: *id001
         courseId: *id001
@@ -3796,6 +3894,23 @@ components:
             email:
               type: string
               format: email
+        mark:
+          type: number
+          minimum: 0
+          nullable: true
+          description: Nonnegative finite points; may exceed assignment maxMark for bonus credit. Null when ungraded
+            or hidden.
+    AssignmentGrade:
+      type: object
+      additionalProperties: false
+      required:
+      - mark
+      properties:
+        mark:
+          type: number
+          minimum: 0
+          nullable: true
+          description: Nonnegative finite points, including bonus marks above assignment maxMark, or null to clear grading.
     Question:
       type: object
       properties:

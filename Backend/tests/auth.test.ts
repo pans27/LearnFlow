@@ -26,7 +26,7 @@ test('auth tokens reject a changed signature and an expired session', () => {
   const token = signAuthToken({ sid: 'session-1', uid: 7 }, secret, expiresAt);
   assert.deepEqual(readAuthToken(token, secret), { sid: 'session-1', uid: 7, exp: Math.floor(expiresAt.getTime() / 1000) });
   const [header, body, signature] = token.split('.');
-  const flipped = `${signature.slice(0, -1)}${signature.endsWith('a') ? 'b' : 'a'}`;
+  const flipped = `${signature.startsWith('a') ? 'b' : 'a'}${signature.slice(1)}`;
   assert.equal(readAuthToken(`${header}.${body}.${flipped}`, secret), undefined);
   assert.equal(readAuthToken(token, 'another-jwt-secret-must-be-32-characters'), undefined);
   const expired = signAuthToken({ sid: 'session-1', uid: 7 }, secret, new Date(Date.now() - 1000));

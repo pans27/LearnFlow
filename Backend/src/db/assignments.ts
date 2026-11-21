@@ -77,11 +77,21 @@ export const assignmentDb = {
   submission: (tx: Prisma.TransactionClient, courseId: number, assignmentId: number, id: number) =>
     tx.assignmentSubmission.findFirst({ where: { courseId, assignmentId, id }, include: { student } }),
 
+  // Update the current submission mark without changing the student's upload timestamp.
+  grade: async (tx: Prisma.TransactionClient, courseId: number, assignmentId: number, id: number, mark: number | null) => {
+    try {
+      return await tx.assignmentSubmission.update({ where: { id, courseId, assignmentId }, data: { mark }, include: { student } });
+    } catch (error) {
+      if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2025') throw new HttpError(404, 'Submission not found');
+      throw error;
+    }
+  },
+
   // Insert or replace a student's current file while retaining its submission identifier.
   saveSubmission: async (tx: Prisma.TransactionClient, courseId: number, assignmentId: number, studentId: number, data: AssignmentSubmissionData) => {
     try {
       return await tx.assignmentSubmission.upsert({ where: { courseId_assignmentId_studentId: { courseId, assignmentId, studentId } },
-        create: { courseId, assignmentId, studentId, ...data }, update: { ...data, submittedAt: new Date() }, include: { student } });
+        create: { courseId, assignmentId, studentId, ...data }, update: { ...data, submittedAt: new Date(), mark: null }, include: { student } });
     } catch (error) {
       if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2003') throw new HttpError(409, 'Assignment or student is no longer available');
       throw error;

@@ -150,6 +150,58 @@ test('assignment lifecycle and latest student submissions', { skip: !process.env
     }
     assert.equal((await request(`/${other.id}/assignments/${assignmentId}/submissions/${submissionId}/download`, admin.cookie)).status, 404);
   });
+  await t.test('instructor marks stay private until released and resubmission clears previous grading', async () => {
+    const submission = `${path}/${assignmentId}/submissions/${submissionId}`;
+    const assignment = `${path}/${assignmentId}`;
+    const before = await prisma.assignmentSubmission.findUniqueOrThrow({ where: { id: submissionId } });
+    assert.equal((await request(assignment, student.cookie)).data.gradesVisible, false);
+    assert.equal((await request(submission, student.cookie, 'PATCH', { mark: 20 })).status, 403);
+    assert.equal((await request(submission, outsider.cookie, 'PATCH', { mark: 20 })).status, 403);
+    assert.equal((await request(submission, instructor.cookie, 'PATCH', { mark: -1 })).status, 400);
+    assert.equal((await request(`/${other.id}/assignments/${assignmentId}/submissions/${submissionId}`, admin.cookie, 'PATCH', { mark: 20 })).status, 404);
+    const graded = await request(submission, instructor.cookie, 'PATCH', { mark: 87.5 });
+    assert.equal(graded.status, 200);
+    assert.equal(graded.data.mark, 87.5);
+    assert.equal(graded.data.submittedAt, before.submittedAt.toISOString());
+    assert.equal((await prisma.assignmentSubmission.findUniqueOrThrow({ where: { id: submissionId } })).mark, 87.5);
+    assert.equal((await request(`${assignment}/submissions/me`, student.cookie)).data.mark, null);
+    assert.equal((await request(`${assignment}/submissions`, instructor.cookie)).data[0].mark, 87.5);
+    assert.equal((await request(assignment, student.cookie, 'PATCH', { gradesVisible: true })).status, 403);
+    assert.equal((await request(assignment, instructor.cookie, 'PATCH', { gradesVisible: true })).data.gradesVisible, true);
+    assert.equal((await request(`${assignment}/submissions/me`, student.cookie)).data.mark, 87.5);
+    await request(assignment, instructor.cookie, 'PATCH', { gradesVisible: false });
+    assert.equal((await request(`${assignment}/submissions/me`, student.cookie)).data.mark, null);
+    assert.equal((await request(submission, admin.cookie, 'PATCH', { mark: null })).data.mark, null);
+    await request(submission, instructor.cookie, 'PATCH', { mark: 0 });
+    await request(assignment, instructor.cookie, 'PATCH', { gradesVisible: true });
+    assert.equal((await request(`${assignment}/submissions/me`, student.cookie)).data.mark, 0);
+    const replaced = await request(`${assignment}/submissions`, student.cookie, 'POST', pdf('regraded.pdf'));
+    assert.equal(replaced.status, 200);
+    assert.equal(replaced.data.mark, null);
+    assert.equal((await prisma.assignmentSubmission.findUniqueOrThrow({ where: { id: submissionId } })).mark, null);
+    await assert.rejects(prisma.assignmentSubmission.update({ where: { id: submissionId }, data: { mark: -1 } }));
+  });
+  await t.test('assignment maximums persist while bonus marks above the maximum remain valid', async () => {
+    const assignment = `${path}/${assignmentId}`;
+    assert.equal((await request(assignment, student.cookie)).data.maxMark, 100);
+    assert.equal((await request(assignment, student.cookie, 'PATCH', { maxMark: 20 })).status, 403);
+    assert.equal((await request(assignment, instructor.cookie, 'PATCH', { maxMark: 0 })).status, 400);
+    const updated = await request(assignment, instructor.cookie, 'PATCH', { maxMark: 20, gradesVisible: true });
+    assert.equal(updated.status, 200);
+    assert.equal(updated.data.maxMark, 20);
+    const graded = await request(`${assignment}/submissions/${submissionId}`, instructor.cookie, 'PATCH', { mark: 25.5 });
+    assert.equal(graded.status, 200);
+    assert.equal(graded.data.mark, 25.5);
+    assert.equal((await request(`${assignment}/submissions/me`, student.cookie)).data.mark, 25.5);
+    assert.equal((await prisma.assignment.findUniqueOrThrow({ where: { id: assignmentId } })).maxMark, 20);
+    assert.equal((await prisma.assignmentSubmission.findUniqueOrThrow({ where: { id: submissionId } })).mark, 25.5);
+    await request(assignment, instructor.cookie, 'PATCH', { maxMark: 10 });
+    assert.equal((await request(`${assignment}/submissions/me`, student.cookie)).data.mark, 25.5);
+    await assert.rejects(prisma.assignment.update({ where: { id: assignmentId }, data: { maxMark: -1 } }));
+    const custom = await request(path, instructor.cookie, 'POST', { title: 'Custom maximum', maxMark: 12.5 });
+    assert.equal(custom.status, 201);
+    assert.equal(custom.data.maxMark, 12.5);
+  });
   await t.test('upload failures preserve the previous file and clean up uncommitted objects', async (t) => {
     t.mock.method(console, 'error', () => {});
     const previous = await prisma.assignmentSubmission.findUniqueOrThrow({ where: { id: submissionId } });
@@ -165,6 +217,45 @@ test('assignment lifecycle and latest student submissions', { skip: !process.env
     assert.equal(put.input.Key, removed.input.Key);
     assert.equal((await prisma.assignmentSubmission.findUniqueOrThrow({ where: { id: submissionId } })).s3Key, previous.s3Key);
   });
+  await t.test('deadlines block first uploads and replacements, including deadlines reached during S3 upload', async () => {
+    const late = await request(path, instructor.cookie, 'POST', {
+      title: 'Closed assignment', isVisible: true, allowResubmission: true, dueAt: '2000-01-01T00:00:00Z',
+    });
+    const closedPath = `${path}/${late.data.id}/submissions`;
+    const offset = commands.length;
+    const first = await request(closedPath, student.cookie, 'POST', pdf());
+    assert.equal(first.status, 409);
+    assert.equal(first.data.message, 'Assignment deadline has passed');
+    assert.equal(commands.length, offset);
+    assert.equal(await prisma.assignmentSubmission.count({ where: { assignmentId: late.data.id } }), 0);
+
+    const previous = await prisma.assignmentSubmission.findUniqueOrThrow({ where: { id: submissionId } });
+    const assignment = `${path}/${assignmentId}`;
+    await request(assignment, instructor.cookie, 'PATCH', {
+      allowResubmission: true, dueAt: '2000-01-01T00:00:00Z',
+    });
+    const replacement = await request(`${assignment}/submissions`, student.cookie, 'POST', pdf());
+    assert.equal(replacement.status, 409);
+    assert.equal(replacement.data.message, 'Assignment deadline has passed');
+    assert.equal(commands.length, offset);
+
+    await request(assignment, instructor.cookie, 'PATCH', { dueAt: '2099-01-01T00:00:00Z' });
+    afterPut = async () => {
+      await prisma.assignment.update({ where: { id: assignmentId }, data: { dueAt: new Date('2000-01-01T00:00:00Z') } });
+    };
+    try {
+      const inflight = await request(`${assignment}/submissions`, student.cookie, 'POST', pdf());
+      assert.equal(inflight.status, 409);
+      assert.equal(inflight.data.message, 'Assignment deadline has passed');
+    } finally { afterPut = undefined; }
+    const [put, removed] = commands.slice(offset);
+    assert.ok(put instanceof PutObjectCommand && removed instanceof DeleteObjectCommand);
+    assert.equal(put.input.Key, removed.input.Key);
+    const unchanged = await prisma.assignmentSubmission.findUniqueOrThrow({ where: { id: submissionId } });
+    assert.equal(unchanged.s3Key, previous.s3Key);
+    assert.equal(unchanged.submittedAt.getTime(), previous.submittedAt.getTime());
+    assert.equal(unchanged.mark, previous.mark);
+  });
   await t.test('deadlines and archived courses reject writes and assignments with submissions retain history', async () => {
     assert.equal((await request(`${path}/${assignmentId}`, instructor.cookie, 'DELETE')).status, 409);
     const empty = await request(path, admin.cookie, 'POST', { title: 'Empty' });
@@ -173,6 +264,7 @@ test('assignment lifecycle and latest student submissions', { skip: !process.env
     assert.equal((await request(`${path}/${assignmentId}/submissions`, student.cookie, 'POST', pdf())).status, 409);
     await prisma.course.update({ where: { id: course.id }, data: { status: 'archived' } });
     assert.equal((await request(path, student.cookie)).status, 403);
+    assert.equal((await request(`${path}/${assignmentId}/submissions/${submissionId}`, admin.cookie, 'PATCH', { mark: 5 })).status, 409);
     assert.equal((await request(`${path}/${assignmentId}`, admin.cookie, 'PATCH', { title: 'No' })).status, 409);
     assert.equal((await request(`${path}/${assignmentId}/submissions`, admin.cookie)).status, 200);
     assert.equal((await request(`${path}/${assignmentId}/submissions/${submissionId}/download`, admin.cookie)).status, 200);
