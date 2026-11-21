@@ -24,9 +24,9 @@ export function visibleResources(courseId: number, userId: number, instructor: b
 
 export const resourceDb = {
   // List resources in a course without exposing rows the account cannot see.
-  list: async (tx: Prisma.TransactionClient, courseId: number, userId: number, instructor: boolean, resourceType?: StoredResourceType) =>
+  list: async (tx: Prisma.TransactionClient, courseId: number, userId: number, instructor: boolean, resourceType?: StoredResourceType, limit?: number) =>
     (await tx.learningResource.findMany({ where: visibleResources(courseId, userId, instructor, resourceType), select: resourceSelect,
-      orderBy: [{ createdAt: 'desc' }, { id: 'desc' }] })).map(asRecord),
+      orderBy: [{ createdAt: 'desc' }, { id: 'desc' }], take: limit })).map(asRecord),
 
   // Load one resource when it belongs to the course and is visible to the account.
   find: async (tx: Prisma.TransactionClient, courseId: number, resourceId: number, userId: number, instructor: boolean) => {

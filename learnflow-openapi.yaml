@@ -1494,11 +1494,11 @@ paths:
                 $ref: '#/components/schemas/Error'
   /api/courses/{courseId}/assignments:
     get:
-      x-implementation-status: planned
+      x-implementation-status: implemented
       tags:
       - Assignments
       operationId: get_api_courses_courseId_assignments
-      summary: "[Planned] List assignments"
+      summary: List assignments
       parameters:
       - $ref: '#/components/parameters/courseId'
       security:
@@ -1536,12 +1536,26 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
+        '409':
+          description: Archived course, passed deadline, disabled resubmission, or assignment with submissions
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+      description: Requires course access; students see published assignments only. Instructors/admins manage assignments
+        in active courses. No pagination. Deletion returns 409 if submissions exist.
     post:
-      x-implementation-status: planned
+      x-implementation-status: implemented
       tags:
       - Assignments
       operationId: post_api_courses_courseId_assignments
-      summary: "[Planned] Create assignment"
+      summary: Create assignment
       parameters:
       - $ref: '#/components/parameters/courseId'
       security:
@@ -1551,17 +1565,7 @@ paths:
         content:
           application/json:
             schema:
-              type: object
-              properties:
-                title:
-                  type: string
-                description:
-                  type: string
-                dueAt:
-                  type: string
-                  format: date-time
-              required:
-              - title
+              $ref: '#/components/schemas/AssignmentCreate'
       responses:
         '201':
           description: Success
@@ -1593,13 +1597,27 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
+        '409':
+          description: Archived course, passed deadline, disabled resubmission, or assignment with submissions
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+      description: Requires course access; students see published assignments only. Instructors/admins manage assignments
+        in active courses. No pagination. Deletion returns 409 if submissions exist.
   /api/courses/{courseId}/assignments/{assignmentId}:
     get:
-      x-implementation-status: planned
+      x-implementation-status: implemented
       tags:
       - Assignments
       operationId: get_api_courses_courseId_assignments_assignmentId
-      summary: "[Planned] Get assignment"
+      summary: Get assignment
       parameters:
       - $ref: '#/components/parameters/courseId'
       - $ref: '#/components/parameters/assignmentId'
@@ -1636,12 +1654,26 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
+        '409':
+          description: Archived course, passed deadline, disabled resubmission, or assignment with submissions
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+      description: Requires course access; students see published assignments only. Instructors/admins manage assignments
+        in active courses. No pagination. Deletion returns 409 if submissions exist.
     patch:
-      x-implementation-status: planned
+      x-implementation-status: implemented
       tags:
       - Assignments
       operationId: patch_api_courses_courseId_assignments_assignmentId
-      summary: "[Planned] Update assignment"
+      summary: Update assignment
       parameters:
       - $ref: '#/components/parameters/courseId'
       - $ref: '#/components/parameters/assignmentId'
@@ -1652,15 +1684,7 @@ paths:
         content:
           application/json:
             schema:
-              type: object
-              properties:
-                title:
-                  type: string
-                description:
-                  type: string
-                dueAt:
-                  type: string
-                  format: date-time
+              $ref: '#/components/schemas/AssignmentUpdate'
       responses:
         '200':
           description: Success
@@ -1692,12 +1716,26 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
+        '409':
+          description: Archived course, passed deadline, disabled resubmission, or assignment with submissions
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+      description: Requires course access; students see published assignments only. Instructors/admins manage assignments
+        in active courses. No pagination. Deletion returns 409 if submissions exist.
     delete:
-      x-implementation-status: planned
+      x-implementation-status: implemented
       tags:
       - Assignments
       operationId: delete_api_courses_courseId_assignments_assignmentId
-      summary: "[Planned] Delete assignment"
+      summary: Delete assignment
       parameters:
       - $ref: '#/components/parameters/courseId'
       - $ref: '#/components/parameters/assignmentId'
@@ -1730,14 +1768,32 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
+        '409':
+          description: Archived course, passed deadline, disabled resubmission, or assignment with submissions
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+      description: Requires course access; students see published assignments only. Instructors/admins manage assignments
+        in active courses. No pagination. Deletion returns 409 if submissions exist.
   /api/courses/{courseId}/assignments/{assignmentId}/submissions:
     post:
-      x-implementation-status: planned
+      x-implementation-status: implemented
       tags:
       - Assignments
       operationId: post_api_courses_courseId_assignments_assignmentId_submissions
-      summary: "[Planned] Upload assignment submission"
-      description: ' Optional scope: implement only if assignment file submissions are included.'
+      summary: Upload assignment submission
+      description: Upload one nonempty PDF up to 10 MB as multipart file, without text fields. Requires student enrollment,
+        an active course, and a published assignment. Uploads at or after dueAt return 409; null dueAt has no deadline.
+        Replacement requires allowResubmission=true and retains the submission ID while replacing the file and submittedAt.
+        Concurrent requests serialize per student and assignment; the last committed allowed upload wins. Identity
+        comes from the session.
       parameters:
       - $ref: '#/components/parameters/courseId'
       - $ref: '#/components/parameters/assignmentId'
@@ -1749,27 +1805,14 @@ paths:
           multipart/form-data:
             schema:
               type: object
+              additionalProperties: false
+              required:
+              - file
               properties:
                 file:
                   type: string
                   format: binary
-              required:
-              - file
       responses:
-        '201':
-          description: Success
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  id:
-                    type: integer
-                    format: int32
-                    minimum: 1
-                    maximum: 2147483647
-                  fileKey:
-                    type: string
         '400':
           description: Invalid input
           content:
@@ -1794,13 +1837,32 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
+        '409':
+          description: Archived course, passed deadline, disabled resubmission, or assignment with submissions
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '200':
+          description: Current submission after initial upload or replacement
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AssignmentSubmission'
     get:
-      x-implementation-status: planned
+      x-implementation-status: implemented
       tags:
       - Assignments
       operationId: get_api_courses_courseId_assignments_assignmentId_submissions
-      summary: "[Planned] List assignment submissions"
-      description: ' Optional scope: implement only if assignment file submissions are included.'
+      summary: List assignment submissions
+      description: Instructors/admins receive one current submission per student with ID, name, email, filename, and
+        timestamp, ordered by studentId. Includes former members. Empty collections return [].
       parameters:
       - $ref: '#/components/parameters/courseId'
       - $ref: '#/components/parameters/assignmentId'
@@ -1814,20 +1876,7 @@ paths:
               schema:
                 type: array
                 items:
-                  type: object
-                  properties:
-                    id:
-                      type: integer
-                      format: int32
-                      minimum: 1
-                      maximum: 2147483647
-                    studentId:
-                      type: integer
-                      format: int32
-                      minimum: 1
-                      maximum: 2147483647
-                    fileKey:
-                      type: string
+                  $ref: '#/components/schemas/AssignmentSubmission'
         '400':
           description: Invalid input
           content:
@@ -1852,14 +1901,27 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
+        '409':
+          description: Archived course, passed deadline, disabled resubmission, or assignment with submissions
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
   /api/courses/{courseId}/assignments/{assignmentId}/submissions/me:
     get:
-      x-implementation-status: planned
+      x-implementation-status: implemented
       tags:
       - Assignments
       operationId: get_api_courses_courseId_assignments_assignmentId_submissions_me
-      summary: "[Planned] Get own assignment submission"
-      description: ' Optional scope: implement only if assignment file submissions are included.'
+      summary: Get own assignment submission
+      description: Return the session user current submission after checking course access and assignment visibility;
+        404 if none exists.
       parameters:
       - $ref: '#/components/parameters/courseId'
       - $ref: '#/components/parameters/assignmentId'
@@ -1871,15 +1933,7 @@ paths:
           content:
             application/json:
               schema:
-                type: object
-                properties:
-                  id:
-                    type: integer
-                    format: int32
-                    minimum: 1
-                    maximum: 2147483647
-                  fileKey:
-                    type: string
+                $ref: '#/components/schemas/AssignmentSubmission'
         '400':
           description: Invalid input
           content:
@@ -1904,14 +1958,27 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
+        '409':
+          description: Archived course, passed deadline, disabled resubmission, or assignment with submissions
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
   /api/courses/{courseId}/assignments/{assignmentId}/submissions/{submissionId}/download:
     get:
-      x-implementation-status: planned
+      x-implementation-status: implemented
       tags:
       - Assignments
       operationId: get_api_courses_courseId_assignments_assignmentId_submissions_submissionId_download
-      summary: "[Planned] Get assignment submission download URL"
-      description: ' Optional scope: implement only if assignment file submissions are included.'
+      summary: Get assignment submission download URL
+      description: Requires submission ownership or instructor/admin permission and course/assignment access. Returns
+        an attachment URL valid for 300 seconds.
       parameters:
       - $ref: '#/components/parameters/courseId'
       - $ref: '#/components/parameters/assignmentId'
@@ -1945,6 +2012,18 @@ paths:
                 $ref: '#/components/schemas/Error'
         '404':
           description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '409':
+          description: Archived course, passed deadline, disabled resubmission, or assignment with submissions
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Internal server error
           content:
             application/json:
               schema:
@@ -3609,23 +3688,114 @@ components:
           type: boolean
     Assignment:
       type: object
+      required:
+      - id
+      - courseId
+      - createdBy
+      - title
+      - description
+      - dueAt
+      - isVisible
+      - allowResubmission
+      - createdAt
+      - updatedAt
       properties:
-        id:
+        id: &id001
           type: integer
           format: int32
           minimum: 1
           maximum: 2147483647
+        courseId: *id001
+        createdBy: *id001
+        title: &id002
+          type: string
+          minLength: 1
+          maxLength: 200
+        description: &id003
+          type: string
+          nullable: true
+          maxLength: 20000
+        dueAt: &id004
+          type: string
+          format: date-time
+          nullable: true
+        isVisible: &id005
+          type: boolean
+          default: false
+        allowResubmission: &id006
+          type: boolean
+          default: false
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+    AssignmentCreate:
+      type: object
+      additionalProperties: false
+      required:
+      - title
+      properties:
+        title: *id002
+        description: *id003
+        dueAt: *id004
+        isVisible: *id005
+        allowResubmission: *id006
+    AssignmentUpdate:
+      type: object
+      additionalProperties: false
+      minProperties: 1
+      properties:
         title:
           type: string
+          minLength: 1
+          maxLength: 200
         description:
           type: string
+          nullable: true
+          maxLength: 20000
         dueAt:
           type: string
           format: date-time
           nullable: true
+        isVisible:
+          type: boolean
+        allowResubmission:
+          type: boolean
+    AssignmentSubmission:
+      type: object
       required:
       - id
-      - title
+      - courseId
+      - assignmentId
+      - studentId
+      - originalFilename
+      - submittedAt
+      - student
+      properties:
+        id: *id001
+        courseId: *id001
+        assignmentId: *id001
+        studentId: *id001
+        originalFilename:
+          type: string
+        submittedAt:
+          type: string
+          format: date-time
+        student:
+          type: object
+          required:
+          - id
+          - name
+          - email
+          properties:
+            id: *id001
+            name:
+              type: string
+            email:
+              type: string
+              format: email
     Question:
       type: object
       properties:

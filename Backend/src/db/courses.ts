@@ -1,12 +1,10 @@
-import { MAX_DASHBOARD_ASSESSMENTS, MAX_DASHBOARD_RESOURCES } from '../constants/dashboard';
+import { MAX_DASHBOARD_ASSESSMENTS } from '../constants/dashboard';
 import type { Prisma } from '../../generated/prisma/client';
 import type { CurrentUser, CourseState } from '../types';
 import { HttpError } from '../errors';
 import { getPrisma } from '../database';
-import { visibleResources } from './resources';
 
 const courseSelect = { id: true, name: true, courseCode: true, description: true, status: true } satisfies Prisma.CourseSelect;
-const recentOrder = [{ createdAt: 'desc' }, { id: 'desc' }] satisfies Prisma.AnnouncementOrderByWithRelationInput[];
 const dueOrder = [{ dueAt: 'asc' }, { id: 'asc' }] satisfies Prisma.QuizOrderByWithRelationInput[];
 
 export const courseDb = {
@@ -27,25 +25,11 @@ export const courseDb = {
     select: { ...courseSelect, enrollments: { where: { userId }, select: { role: true } } },
   }),
 
-  // Fetch upcoming assignments within the dashboard limit.
-  assignments: (tx: Prisma.TransactionClient, courseId: number, instructor: boolean, now: Date) => tx.assignment.findMany({
-    where: { courseId, dueAt: { gte: now }, ...(instructor ? {} : { isVisible: true }) },
-    select: { id: true, title: true, dueAt: true, isVisible: true },
-    orderBy: dueOrder, take: MAX_DASHBOARD_ASSESSMENTS,
-  }),
-
   // Fetch upcoming quizzes while excluding hidden or unpublished quizzes for students.
   quizzes: (tx: Prisma.TransactionClient, courseId: number, instructor: boolean, now: Date) => tx.quiz.findMany({
     where: { courseId, dueAt: { gte: now }, ...(instructor ? { status: { not: 'closed' } } : { isVisible: true, status: 'published' }) },
     select: { id: true, title: true, dueAt: true, opensAt: true, isVisible: true, status: true },
     orderBy: dueOrder, take: MAX_DASHBOARD_ASSESSMENTS,
-  }),
-
-  // Fetch recent visible resources, the user's private resources, and instructor-managed materials.
-  resources: (tx: Prisma.TransactionClient, courseId: number, userId: number, instructor: boolean) => tx.learningResource.findMany({
-    where: visibleResources(courseId, userId, instructor),
-    select: { id: true, title: true, resourceType: true, ownerId: true, isVisible: true, extractionStatus: true, createdAt: true },
-    orderBy: recentOrder, take: MAX_DASHBOARD_RESOURCES,
   }),
 
   // Fetch only the student's latest attempt status for each upcoming quiz.
@@ -54,11 +38,6 @@ export const courseDb = {
     select: { quizId: true, status: true }, distinct: ['quizId'], orderBy: { attemptNumber: 'desc' },
   }),
 
-  // Fetch the student's submitted assignment IDs without exposing storage keys.
-  ownAssignmentSubmissions: (tx: Prisma.TransactionClient, courseId: number, userId: number, assignmentIds: number[]) =>
-    tx.assignmentSubmission.findMany({ where: { courseId, studentId: userId, assignmentId: { in: assignmentIds } },
-      select: { assignmentId: true } }),
-
   // Fetch open, visible, published quizzes within the dashboard statistics limit.
   activeQuizzes: (tx: Prisma.TransactionClient, courseId: number, now: Date) => tx.quiz.findMany({
     where: { courseId, status: 'published', isVisible: true,
@@ -66,20 +45,6 @@ export const courseDb = {
         { OR: [{ dueAt: null }, { dueAt: { gte: now } }] }] },
     select: { id: true, title: true, dueAt: true }, orderBy: dueOrder, take: MAX_DASHBOARD_ASSESSMENTS,
   }),
-
-  // Fetch visible assignments within the dashboard statistics limit.
-  activeAssignments: (tx: Prisma.TransactionClient, courseId: number, now: Date) => tx.assignment.findMany({
-    where: { courseId, isVisible: true, OR: [{ dueAt: null }, { dueAt: { gte: now } }] },
-    select: { id: true, title: true, dueAt: true }, orderBy: dueOrder, take: MAX_DASHBOARD_ASSESSMENTS,
-  }),
-
-  // Fetch submitted assignment memberships for currently enrolled active students.
-  assignmentSubmissionStates: (tx: Prisma.TransactionClient, courseId: number, assignmentIds: number[]) =>
-    tx.assignmentSubmission.findMany({
-      where: { courseId, assignmentId: { in: assignmentIds },
-        student: { isActive: true, enrollments: { some: { courseId, role: 'student' } } } },
-      select: { assignmentId: true, studentId: true },
-    }),
 
   // Count active accounts currently enrolled as students in this course.
   eligibleStudents: (tx: Prisma.TransactionClient, courseId: number) => tx.enrollment.count({
