@@ -17,8 +17,9 @@ that are not implemented yet.
 | Administration | Implemented: user provisioning/updates, courses, and single/bulk enrollment management |
 | User courses | Implemented: enrolled-course list, course detail, and role-aware dashboard |
 | Announcements | Implemented: course-scoped list, read, create, edit, delete, visibility, and cursor pagination |
-| Assignments and quizzes | Database and dashboard summaries exist; standalone assessment endpoints are not implemented |
-| Submissions and grading | Database and dashboard statistics exist; standalone endpoints are not implemented |
+| Assignments | Implemented: list, detail, creation, updates, deletion, and instructor-controlled resubmission |
+| Assignment submissions | Implemented: PDF upload/replacement, own submission, latest submissions with student identities, and authorized downloads |
+| Quizzes and grading | Database and dashboard summaries exist; standalone endpoints are not implemented |
 | Resources | Implemented: list, upload, detail, preview/download URLs, and deletion backed by S3 |
 | PDF extraction and search | Uploads enqueue jobs; API-managed runner and parsing thread framework exist; parser implementation and search endpoints remain TODO |
 
@@ -356,6 +357,30 @@ Responses contain `id`, `title`, `resourceType`, `ownerId`, `visibility`, `extra
 
 Set `AWS_REGION`, `AWS_S3_BUCKET`, `AWS_ACCESS_KEY_ID`, and `AWS_SECRET_ACCESS_KEY` in `Backend/.env` for local development or Docker Compose. The configured AWS credentials need object upload, read, and delete access to the bucket. S3 operations require these settings; metadata reads do not. Rebuild/recreate the API container after changing its environment.
 
+## Assignment endpoints
+
+All paths below start with `/api/courses/:courseId/assignments`. Session authentication and course access are required. Students see published assignments; instructors and administrators see hidden assignments as well.
+
+| Method | Relative path | Behavior |
+| --- | --- | --- |
+| GET | `/` | List assignments visible to the caller |
+| POST | `/` | Instructor/admin creates an assignment; return 201 with the assignment object |
+| GET | `/:assignmentId` | Return assignment details |
+| PATCH | `/:assignmentId` | Instructor/admin updates assignment settings |
+| DELETE | `/:assignmentId` | Instructor/admin deletes an assignment without submissions; return 204 |
+| POST | `/:assignmentId/submissions` | Student uploads or replaces their current PDF; return 200 with submission metadata |
+| GET | `/:assignmentId/submissions/me` | Return the caller's current submission, or 404 |
+| GET | `/:assignmentId/submissions` | Instructor/admin lists each student's latest submission with identity |
+| GET | `/:assignmentId/submissions/:submissionId/download` | Owner or instructor/admin receives a download URL valid for 300 seconds |
+
+Creation accepts `title` (required, 1-200 trimmed characters), `description` (up to 20000 characters or null), `dueAt` (timestamp with timezone or null), `isVisible` (default false), and `allowResubmission` (default false). PATCH accepts those same fields without changing omitted values. Student uploads require a visible assignment, an active course, and a deadline that has not passed; null `dueAt` has no deadline. Assignments with submissions cannot be deleted (409), preserving student work; hide them instead. Writes to archived courses return 409 for administrators; ordinary users cannot access archived courses (403).
+
+Uploads use multipart `file` with one nonempty PDF up to 10 MB and no text fields. Student identity comes from the verified session. A first submission is allowed; subsequent uploads require instructor-controlled `allowResubmission=true`, otherwise 409. Replacement retains the submission ID, replaces the S3 key and filename, and refreshes `submittedAt`; only one row per assignment/student is retained. Concurrent uploads serialize only for that assignment/student, without a course lock. The last committed permitted upload becomes current.
+
+Submission responses contain `id`, `courseId`, `assignmentId`, `studentId`, `originalFilename`, `submittedAt`, and `student: { id, name, email }`. Instructor lists include former members' submissions, ordered by student ID, and return an empty array when there are none. Students cannot list peers' work or download their files. Metadata never includes internal S3 keys. Downloads always sign the current file; previously issued URLs remain valid until expiration unless their object has been removed.
+
+Failed database writes attempt cleanup of the new S3 object and preserve the previous submission. After replacement, the previous object is removed; cleanup failures are logged for manual follow-up (durable cleanup retries remain TODO). Assignment submissions are private files and do not enter the shared-resource extraction queue. Grading, additional file formats, frontend assignment UI integration, and final archival remain separate work.
+
 ## Team integration TODOs
 
 Authentication integration:
@@ -370,11 +395,11 @@ Authentication integration:
 File-processing owner:
 
 - Storage upload, authorized preview/download, resource deletion, and pending extraction job creation are connected.
-- Implement PDF extraction workers to update job/resource statuses and write `resource_pages`.
+- Implement `parsePdf` and set `PDF_PARSER_READY=true` to enable the API-managed extraction runner; see the [file-processing handoff](docs/file-processing.md).
 - Integrate final submission archival with S3 before marking submissions finalized.
   No S3 keys or extracted PDF content are fabricated by these endpoints.
 
-Next backend slices: assignments, quizzes/questions, submissions/grading, and
+Next backend slices: quizzes/questions, quiz submissions/grading, and
 course-scoped PDF search. Their tables exist; their endpoints are not implemented yet.
 
 ## Verification

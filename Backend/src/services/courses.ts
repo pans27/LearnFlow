@@ -3,6 +3,8 @@ import type { Prisma } from '../../generated/prisma/client';
 import type { AccessibleCourseResponse, CourseAccessRecord, CurrentUser, DashboardAssessment, DashboardResponse } from '../types';
 import { courseDb as database } from '../db/courses';
 import { announcementDb } from '../db/announcements';
+import { assignmentDb } from '../db/assignments';
+import { resourceDb } from '../db/resources';
 import { HttpError } from '../errors';
 
 // Return course metadata and the current user's course-specific role.
@@ -44,8 +46,8 @@ export const courseService = {
       const now = new Date();
       const [announcements, assignments, quizzes, resources] = await Promise.all([
         announcementDb.list(tx, courseId, instructor, { limit: MAX_DASHBOARD_ANNOUNCEMENTS }),
-        database.assignments(tx, courseId, instructor, now),
-        database.quizzes(tx, courseId, instructor, now), database.resources(tx, courseId, user.id, instructor),
+        assignmentDb.list(tx, courseId, instructor, { dueAfter: now, limit: MAX_DASHBOARD_ASSESSMENTS }),
+        database.quizzes(tx, courseId, instructor, now), resourceDb.list(tx, courseId, user.id, instructor, undefined, MAX_DASHBOARD_RESOURCES),
       ]);
       const assessments: DashboardAssessment[] = [
         ...assignments.map((item): DashboardAssessment => ({ id: item.id, type: 'assignment', title: item.title,
@@ -69,7 +71,7 @@ export const courseService = {
       if (!instructor) {
         const [quizSubmissions, assignmentSubmissions] = await Promise.all([
           database.ownQuizSubmissions(tx, courseId, user.id, assessments.filter((a) => a.type === 'quiz').map((a) => a.id)),
-          database.ownAssignmentSubmissions(tx, courseId, user.id, assessments.filter((a) => a.type === 'assignment').map((a) => a.id)),
+          assignmentDb.ownSubmissionStates(tx, courseId, user.id, assessments.filter((a) => a.type === 'assignment').map((a) => a.id)),
         ]);
         for (const assessment of assessments) {
           assessment.submissionStatus = assessment.type === 'quiz'
@@ -78,11 +80,11 @@ export const courseService = {
         }
       } else {
         const [activeQuizzes, activeAssignments, eligibleStudents] = await Promise.all([
-          database.activeQuizzes(tx, courseId, now), database.activeAssignments(tx, courseId, now), database.eligibleStudents(tx, courseId),
+          database.activeQuizzes(tx, courseId, now), assignmentDb.list(tx, courseId, false, { dueAfter: now, includeUndated: true, limit: MAX_DASHBOARD_ASSESSMENTS }), database.eligibleStudents(tx, courseId),
         ]);
         const [quizStates, assignmentStates] = await Promise.all([
           database.submissionStates(tx, courseId, activeQuizzes.map((quiz) => quiz.id)),
-          database.assignmentSubmissionStates(tx, courseId, activeAssignments.map((assignment) => assignment.id)),
+          assignmentDb.submissionStates(tx, courseId, activeAssignments.map((assignment) => assignment.id)),
         ]);
         const active = [
           ...activeQuizzes.map((item) => ({ ...item, type: 'quiz' as const })),

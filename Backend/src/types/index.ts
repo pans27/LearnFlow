@@ -1,4 +1,6 @@
 // Re-export domain types to preserve existing imports from the types folder.
+export type { AssignmentBody, AssignmentCreateData, AssignmentUpdateData, AssignmentRecord, AssignmentResponse,
+  AssignmentSubmissionRecord, AssignmentSubmissionResponse, AssignmentSubmissionData, AssignmentListOptions } from './assignments';
 export type { ExtractionJob, ExtractionWork, ExtractedPage, PdfProcessor, ExtractionRunResult, ExtractionRunnerOptions,
   PdfThreadInput, PdfThreadOptions } from './extraction';
 export type {

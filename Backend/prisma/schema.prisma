@@ -119,6 +119,7 @@ model Assignment {
   description String?
   dueAt       DateTime? @map("due_at") @db.Timestamptz
   isVisible   Boolean  @default(false) @map("is_visible")
+  allowResubmission Boolean @default(false) @map("allow_resubmission")
   createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz
   updatedAt   DateTime @default(now()) @map("updated_at") @db.Timestamptz
   course      Course   @relation(fields: [courseId], references: [id], onDelete: Cascade, onUpdate: NoAction)
