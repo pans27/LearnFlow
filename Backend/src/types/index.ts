@@ -1,4 +1,7 @@
 // Re-export domain types to preserve existing imports from the types folder.
+export type { QuizStatus, QuizQuestionType, QuizData, QuizUpdateData, QuizBody, QuizQuestionData, QuizAnswers,
+  QuizQuestionMark, QuizQuestionMarks, QuizGradeData, QuizListOptions, QuizRecord, QuizResponse,
+  QuizQuestionResponse, QuizSubmissionResponse, QuizQuestionRecord, QuizWithQuestions, QuizAttemptRecord } from './quizzes';
 export type { AssignmentBody, AssignmentCreateData, AssignmentUpdateData, AssignmentRecord, AssignmentResponse,
   AssignmentSubmissionRecord, AssignmentSubmissionResponse, AssignmentSubmissionData, AssignmentListOptions,
   AssignmentGradeBody, AssignmentGradeData } from './assignments';

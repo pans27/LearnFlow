@@ -19,7 +19,7 @@ that are not implemented yet.
 | Announcements | Implemented: course-scoped list, read, create, edit, delete, visibility, and cursor pagination |
 | Assignments | Implemented: list, detail, creation, updates, deletion, and instructor-controlled resubmission |
 | Assignment submissions | Implemented: PDF upload/replacement, latest submissions with student identities, marks, grade release, and authorized downloads |
-| Quizzes and quiz grading | Database and dashboard summaries exist; standalone endpoints are not implemented |
+| Quizzes and quiz grading | Implemented: settings, ordered questions, saved drafts, bounded attempts, automatic/manual question grading, result release, and instructor review |
 | Resources | Implemented: list, upload, detail, preview/download URLs, and deletion backed by S3 |
 | PDF extraction and search | Uploads enqueue jobs; API-managed runner and parsing thread framework exist; parser implementation and search endpoints remain TODO |
 
@@ -386,6 +386,50 @@ Assignment settings also accept `gradesVisible` (default false). Instructors/adm
 
 Failed database writes attempt cleanup of the new S3 object and preserve the previous submission. After replacement, the previous object is removed; cleanup failures are logged for manual follow-up (durable cleanup retries remain TODO). Assignment submissions are private files and do not enter the shared-resource extraction queue. Additional file formats, frontend assignment UI integration, and final archival remain separate work.
 
+## Quiz endpoints
+
+Paths below start with `/api/courses/:courseId/quizzes`. All require a verified session and course access. Instructors and admins manage quizzes; enrolled students submit their own work. Archived courses are read-only for admins and inaccessible to ordinary users.
+
+| Method | Relative path | Behavior |
+| --- | --- | --- |
+| GET / POST | `/` | List visible quizzes / create a quiz (201) |
+| GET / PATCH / DELETE | `/:quizId` | Quiz with ordered questions / settings update / delete unused quiz (204) |
+| GET / POST | `/:quizId/questions` | List role-filtered questions / append a question (201) |
+| PATCH / DELETE | `/:quizId/questions/:questionId` | Replace a full question definition / delete it (204) |
+| GET / PUT | `/:quizId/draft` | Read saved draft or null / save answers and reserve or reuse one attempt |
+| POST | `/:quizId/submissions` | Finalize the current draft or next permitted attempt (201) |
+| GET | `/:quizId/submissions/me` | Own attempt history, newest first, including current draft |
+| GET | `/:quizId/submissions` | Instructor/admin sees each student's latest finalized attempt with ID, name, and email |
+| GET / PATCH | `/:quizId/submissions/:submissionId` | Authorized attempt detail / owner updates a draft |
+| POST | `/:quizId/submissions/:submissionId/submit` | Finalize that draft with supplied answers (201) |
+| GET | `/:quizId/submissions/:submissionId/result` | Released result for owner or finalized result for instructor/admin |
+| PATCH | `/:quizId/submissions/:submissionId/grade` | Merge manual question marks and optional feedback |
+| GET | `/:quizId/statistics` | Instructor/admin gets active-student submission and grading counts/rate |
+
+Create with `title` and optional `description`, `opensAt`, `dueAt`, `maxAttempts`, `isVisible`, `status`, and `showResults`. Defaults are a hidden `draft`, one attempt, and hidden results. Dates use ISO timestamps with timezones or null. Add questions, then PATCH `{ "status": "published", "isVisible": true }`. Status can also be `closed`. Dates must be ordered; student answer writes require an active course, visible published quiz, reached opening time, and a deadline that has not passed. Null dates mean no opening/deadline bound. Limits, availability, and deadlines are checked again after S3 upload.
+
+Question examples:
+
+```json
+{ "type": "short_answer", "prompt": "Explain transactions", "points": 5 }
+```
+
+```json
+{ "type": "multiple_choice", "prompt": "Pick all that apply", "options": ["A", "B", "C"], "allowMultiple": true, "answerKey": ["A", "C"], "points": 3 }
+```
+
+Textbox questions use `short_answer`. Multiple choice uses `multiple_choice`; `allowMultiple` defaults to false, enforcing at most one selected option. Options are 2-20 unique strings. An optional `answerKey` is a nonempty string for textboxes or an array of correct option values for multiple choice; omit it or use null for manual grading. For single selection the key contains exactly one option. Question `points` defaults to 1 and accepts nonnegative values with up to two decimal places. A quiz supports up to 100 ordered questions. PATCH a question supplies its full definition; omitted optional fields revert to their defaults. Once any student draft or finalized attempt exists, question changes and quiz deletion return 409 to preserve answer meaning and history. Availability, attempt limits, and result settings remain editable.
+
+Draft saves and finalization send `{ "answers": { "12": "Textbox answer", "13": ["A", "C"] } }` using question IDs as keys. Multiple choice always uses arrays, including single selection. Missing answers are allowed; known keys automatically receive zero for unanswered questions. Unknown question IDs, invalid options, duplicate selections, and multiple selections on a single-select question return 400. Saved drafts reserve one attempt; repeated saves reuse it, and finalizing it does not consume a second attempt. Opening another draft after finalization reserves the next numbered attempt, bounded by instructor-defined `maxAttempts`. Drafts are not deleted to regain attempts. Concurrent requests cannot exceed the attempt limit. Finalized answers cannot be edited; previous attempts remain available by ID and in the student's history.
+
+Finalization stores a private JSON answer file in S3 before committing the finalized database snapshot. Failed finalization attempts cleanup of the uncommitted file, logging cleanup failures for follow-up. Result reads retrieve archived S3 answers and combine them with stored marks. Object keys and credentials are never returned. These JSON files do not enter PDF extraction.
+
+Automatic grading gives full points for exact multiple choice set equality (order ignored) or trimmed, case-sensitive textbox equality, and zero otherwise. No-key questions remain ungraded. Manual grading accepts `{ "grades": [{ "questionId": 12, "mark": 4.5 }], "feedback": "Good explanation" }`; marks range from zero to question points and can override automatic marks. Partial saves preserve other marks. Until every question is graded, `score` is null and status is `submitted`; afterward `score` is the sum and status is `graded`. Marks identify their `auto` or `manual` source.
+
+PATCH `{ "showResults": true }` releases results, or false hides them again. Before release, student-facing attempt responses return null for score, question marks, and feedback, and report finalized status as `submitted`. The result endpoint returns 403 until release. Instructors/admins always see finalized grading; answer keys remain manager-only even after release. Students cannot access peers' attempts, and managers cannot read another student's unfinished draft. Instructor lists retain former students' latest finalized work; statistics count only currently enrolled active students.
+
+The backend quiz contract is implemented; the frontend's existing prototype quiz payloads still need adaptation to these numeric IDs, question definitions, and attempt/result responses.
+
 ## Team integration TODOs
 
 Authentication integration:
@@ -401,11 +445,9 @@ File-processing owner:
 
 - Storage upload, authorized preview/download, resource deletion, and pending extraction job creation are connected.
 - Implement `parsePdf` and set `PDF_PARSER_READY=true` to enable the API-managed extraction runner; see the [file-processing handoff](docs/file-processing.md).
-- Integrate final submission archival with S3 before marking submissions finalized.
-  No S3 keys or extracted PDF content are fabricated by these endpoints.
+- Quiz finalization now archives private JSON answers in S3 before committing; coordinate any additional assignment archival policy separately.
 
-Next backend slices: quizzes/questions, quiz submissions/grading, and
-course-scoped PDF search. Their tables exist; their endpoints are not implemented yet.
+Next backend slice: course-scoped PDF search; its tables exist, but its endpoint remains planned.
 
 ## Verification
 

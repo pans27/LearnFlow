@@ -4,6 +4,7 @@ import type { AccessibleCourseResponse, CourseAccessRecord, CurrentUser, Dashboa
 import { courseDb as database } from '../db/courses';
 import { announcementDb } from '../db/announcements';
 import { assignmentDb } from '../db/assignments';
+import { quizDb } from '../db/quizzes';
 import { resourceDb } from '../db/resources';
 import { HttpError } from '../errors';
 
@@ -47,7 +48,7 @@ export const courseService = {
       const [announcements, assignments, quizzes, resources] = await Promise.all([
         announcementDb.list(tx, courseId, instructor, { limit: MAX_DASHBOARD_ANNOUNCEMENTS }),
         assignmentDb.list(tx, courseId, instructor, { dueAfter: now, limit: MAX_DASHBOARD_ASSESSMENTS }),
-        database.quizzes(tx, courseId, instructor, now), resourceDb.list(tx, courseId, user.id, instructor, undefined, MAX_DASHBOARD_RESOURCES),
+        quizDb.list(tx, courseId, instructor, { dueAfter: now, limit: MAX_DASHBOARD_ASSESSMENTS }), resourceDb.list(tx, courseId, user.id, instructor, undefined, MAX_DASHBOARD_RESOURCES),
       ]);
       const assessments: DashboardAssessment[] = [
         ...assignments.map((item): DashboardAssessment => ({ id: item.id, type: 'assignment', title: item.title,
@@ -70,7 +71,7 @@ export const courseService = {
       };
       if (!instructor) {
         const [quizSubmissions, assignmentSubmissions] = await Promise.all([
-          database.ownQuizSubmissions(tx, courseId, user.id, assessments.filter((a) => a.type === 'quiz').map((a) => a.id)),
+          quizDb.ownSubmissionStates(tx, courseId, user.id, assessments.filter((a) => a.type === 'quiz').map((a) => a.id)),
           assignmentDb.ownSubmissionStates(tx, courseId, user.id, assessments.filter((a) => a.type === 'assignment').map((a) => a.id)),
         ]);
         for (const assessment of assessments) {
@@ -80,10 +81,10 @@ export const courseService = {
         }
       } else {
         const [activeQuizzes, activeAssignments, eligibleStudents] = await Promise.all([
-          database.activeQuizzes(tx, courseId, now), assignmentDb.list(tx, courseId, false, { dueAfter: now, includeUndated: true, limit: MAX_DASHBOARD_ASSESSMENTS }), database.eligibleStudents(tx, courseId),
+          quizDb.list(tx, courseId, false, { activeAt: now, limit: MAX_DASHBOARD_ASSESSMENTS }), assignmentDb.list(tx, courseId, false, { dueAfter: now, includeUndated: true, limit: MAX_DASHBOARD_ASSESSMENTS }), database.eligibleStudents(tx, courseId),
         ]);
         const [quizStates, assignmentStates] = await Promise.all([
-          database.submissionStates(tx, courseId, activeQuizzes.map((quiz) => quiz.id)),
+          quizDb.submissionStates(tx, courseId, activeQuizzes.map((quiz) => quiz.id)),
           assignmentDb.submissionStates(tx, courseId, activeAssignments.map((assignment) => assignment.id)),
         ]);
         const active = [
