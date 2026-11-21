@@ -5,6 +5,7 @@
     "target": "ES2023",
     "strict": true,
     "noEmit": true,
+    "allowImportingTsExtensions": true,
     "types": ["node"],
     "esModuleInterop": true
   },

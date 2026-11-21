@@ -1,4 +1,6 @@
 // Re-export domain types to preserve existing imports from the types folder.
+export type { ExtractionJob, ExtractionWork, ExtractedPage, PdfProcessor, ExtractionRunResult, ExtractionRunnerOptions,
+  PdfThreadInput, PdfThreadOptions } from './extraction';
 export type {
   CourseStatus, CourseBody, CourseStatusBody, CourseCreateData, CourseUpdateData,
   CourseInsertData, CourseSaveData, CourseRecord, CourseState, CourseResponse,

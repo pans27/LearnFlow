@@ -1,9 +1,24 @@
 import app from './app';
 import { config } from './config';
 import { closeDatabase } from './database';
+import { runExtractionWorker } from './workers/runner';
+import { processPdf } from './workers/pdf-processor';
+import { PDF_PARSER_READY } from './workers/pdf-parser';
+
+const extractionShutdown = new AbortController();
+let extractionRunner: Promise<void> = Promise.resolve();
 
 const server = app.listen(config.port, () => {
   console.log(`LearnFlow API listening on http://localhost:${config.port}`);
+  // TODO(file processing): implement parsePdf and mark it ready to begin consuming queued jobs.
+  if (PDF_PARSER_READY) {
+    extractionRunner = runExtractionWorker(processPdf, { signal: extractionShutdown.signal }).catch((error) => {
+      console.error('Extraction runner stopped:', error);
+      process.exitCode = 1;
+    });
+  } else {
+    console.log('PDF extraction paused: parser implementation is pending');
+  }
 });
 
 server.on('error', (error) => {
@@ -12,16 +27,18 @@ server.on('error', (error) => {
 });
 
 let shuttingDown = false;
-// Close the HTTP listener and database connection before exiting.
+// Stop HTTP requests and extraction claims before waiting for work and closing the database.
 function shutdown() {
   if (shuttingDown) return;
   shuttingDown = true;
-  const timeout = setTimeout(() => process.exit(1), 10000);
+  extractionShutdown.abort();
+  const timeout = setTimeout(() => process.exit(1), 75000);
   timeout.unref();
   server.close(async (error) => {
     try {
+      await extractionRunner;
       await closeDatabase();
-      process.exitCode = error ? 1 : 0;
+      process.exitCode = error ? 1 : (process.exitCode ?? 0);
     } catch (databaseError) {
       console.error('Database shutdown failed:', databaseError);
       process.exitCode = 1;

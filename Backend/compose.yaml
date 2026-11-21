@@ -18,6 +18,7 @@ services:
 
   api:
     build: .
+    stop_grace_period: 80s
     environment:
       AWS_REGION: ${AWS_REGION:-}
       AWS_S3_BUCKET: ${AWS_S3_BUCKET:-}
