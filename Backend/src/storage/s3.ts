@@ -1,12 +1,35 @@
 import { DeleteObjectCommand, GetObjectCommand, PutObjectCommand, S3Client } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import { config } from '../config';
-import type { PresignedUrlResponse } from '../types';
+import type { PresignedUrlResponse, QuizAnswers } from '../types';
 import type { Readable } from 'node:stream';
 import { HttpError } from '../errors';
 
 const URL_TTL_SECONDS = 300;
 let client: S3Client | undefined;
+
+// Archive finalized quiz answers as a private JSON object in the configured bucket.
+export async function putQuizAnswers(key: string, answers: QuizAnswers): Promise<void> {
+  const { bucket } = settings();
+  await s3().send(new PutObjectCommand({ Bucket: bucket, Key: key, Body: JSON.stringify(answers), ContentType: 'application/json' }),
+    { abortSignal: AbortSignal.timeout(30000) });
+}
+
+// Read a finalized private quiz answer file with a bounded size and download deadline.
+export async function getQuizAnswers(key: string): Promise<QuizAnswers> {
+  const { bucket } = settings();
+  const response = await s3().send(new GetObjectCommand({ Bucket: bucket, Key: key }), { abortSignal: AbortSignal.timeout(30000) });
+  if (!response.Body) throw new Error('Quiz answer file has no body');
+  const body = response.Body as Readable;
+  const chunks: Uint8Array[] = [];
+  let size = 0;
+  for await (const chunk of body as AsyncIterable<Uint8Array>) {
+    size += chunk.byteLength;
+    if (size > 3 * 1024 * 1024) { body.destroy(); throw new Error('Quiz answer file exceeds the size limit'); }
+    chunks.push(chunk);
+  }
+  return JSON.parse(Buffer.concat(chunks).toString('utf8')) as QuizAnswers;
+}
 
 // Require the bucket settings before any storage operation.
 function settings() {

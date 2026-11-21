@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { validateBody, validateIds } from '../middleware/validation';
-import { createAssignmentBody, updateAssignmentBody } from '../validation/assignments';
+import { createAssignmentBody, updateAssignmentBody, assignmentGradeBody } from '../validation/assignments';
 import * as controller from '../controllers/assignments';
 
 const router = Router({ mergeParams: true });
@@ -13,6 +13,7 @@ router.delete('/:assignmentId', validateIds, controller.remove);
 router.get('/:assignmentId/submissions', validateIds, controller.submissions);
 router.post('/:assignmentId/submissions', validateIds, controller.upload);
 router.get('/:assignmentId/submissions/me', validateIds, controller.own);
+router.patch('/:assignmentId/submissions/:submissionId', validateIds, validateBody(assignmentGradeBody, 'assignmentGrade'), controller.grade);
 router.get('/:assignmentId/submissions/:submissionId/download', validateIds, controller.download);
 
 export default router;

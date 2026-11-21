@@ -120,6 +120,8 @@ model Assignment {
   dueAt       DateTime? @map("due_at") @db.Timestamptz
   isVisible   Boolean  @default(false) @map("is_visible")
   allowResubmission Boolean @default(false) @map("allow_resubmission")
+  gradesVisible Boolean @default(false) @map("grades_visible")
+  maxMark Float @default(100) @map("max_mark")
   createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz
   updatedAt   DateTime @default(now()) @map("updated_at") @db.Timestamptz
   course      Course   @relation(fields: [courseId], references: [id], onDelete: Cascade, onUpdate: NoAction)
@@ -168,6 +170,7 @@ model QuizQuestion {
   prompt       String
   options      Json?
   answerKey    Json?   @map("answer_key")
+  allowMultiple Boolean @default(false) @map("allow_multiple")
   points       Decimal @default(1) @db.Decimal(8, 2)
   course       Course  @relation(fields: [courseId], references: [id], onDelete: Cascade, onUpdate: NoAction)
   quiz         Quiz    @relation(fields: [courseId, quizId], references: [courseId, id], onDelete: Cascade, onUpdate: NoAction)
@@ -186,6 +189,7 @@ model Submission {
   attemptNumber Int      @default(1) @map("attempt_number")
   status        String   @default("draft")
   draftAnswers  Json     @default("{}") @map("draft_answers")
+  questionMarks Json @default("{}") @map("question_marks")
   s3Key         String?  @map("s3_key")
   feedback      String?
   score         Decimal? @db.Decimal(10, 2)
@@ -263,6 +267,7 @@ model AssignmentSubmission {
   s3Key            String @map("s3_key")
   originalFilename String @map("original_filename")
   submittedAt      DateTime @default(now()) @map("submitted_at") @db.Timestamptz
+  mark             Float?
   course           Course @relation(fields: [courseId], references: [id], onDelete: Cascade, onUpdate: NoAction)
   assignment       Assignment @relation(fields: [courseId, assignmentId], references: [courseId, id], onDelete: Cascade, onUpdate: NoAction)
   student          User @relation(fields: [studentId], references: [id], onDelete: NoAction, onUpdate: NoAction)

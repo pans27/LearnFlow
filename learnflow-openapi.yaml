@@ -1610,7 +1610,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/Error'
       description: Requires course access; students see published assignments only. Instructors/admins manage assignments
-        in active courses. No pagination. Deletion returns 409 if submissions exist.
+        in active courses. No pagination. Deletion returns 409 if submissions exist. gradesVisible defaults to false.
   /api/courses/{courseId}/assignments/{assignmentId}:
     get:
       x-implementation-status: implemented
@@ -1729,7 +1729,8 @@ paths:
               schema:
                 $ref: '#/components/schemas/Error'
       description: Requires course access; students see published assignments only. Instructors/admins manage assignments
-        in active courses. No pagination. Deletion returns 409 if submissions exist.
+        in active courses. No pagination. Deletion returns 409 if submissions exist. Set gradesVisible=true to release
+        stored marks or false to hide them again; omitted settings remain unchanged.
     delete:
       x-implementation-status: implemented
       tags:
@@ -1921,7 +1922,8 @@ paths:
       operationId: get_api_courses_courseId_assignments_assignmentId_submissions_me
       summary: Get own assignment submission
       description: Return the session user current submission after checking course access and assignment visibility;
-        404 if none exists.
+        404 if none exists. Marks are null until gradesVisible is enabled; instructors and admins can always see their
+        own marks.
       parameters:
       - $ref: '#/components/parameters/courseId'
       - $ref: '#/components/parameters/assignmentId'
@@ -2028,20 +2030,85 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
-  /api/courses/{courseId}/quizzes:
-    get:
-      x-implementation-status: planned
+  /api/courses/{courseId}/assignments/{assignmentId}/submissions/{submissionId}:
+    patch:
+      x-implementation-status: implemented
       tags:
-      - Quizzes
-      operationId: get_api_courses_courseId_quizzes
-      summary: "[Planned] List quizzes"
+      - Assignments
+      operationId: patch_api_courses_courseId_assignments_assignmentId_submissions_submissionId
+      summary: Grade current assignment submission
+      description: Requires instructor or admin access to an active course. Saves a nonnegative finite mark, or null
+        to clear it. Does not change submittedAt. Reuploads clear the previous mark. Instructors always see marks;
+        students see them only when assignment gradesVisible is true.
       parameters:
       - $ref: '#/components/parameters/courseId'
+      - $ref: '#/components/parameters/assignmentId'
+      - $ref: '#/components/parameters/submissionId'
       security:
       - sessionCookie: []
       responses:
         '200':
-          description: Returns an empty array when no items match.
+          description: Graded current submission
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AssignmentSubmission'
+        '400':
+          description: Invalid input
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '409':
+          description: Archived course, passed deadline, disabled resubmission, or assignment with submissions
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AssignmentGrade'
+  /api/courses/{courseId}/quizzes:
+    get:
+      x-implementation-status: implemented
+      tags:
+      - Quizzes
+      operationId: get_api_courses_courseId_quizzes
+      summary: List quizzes
+      security:
+      - sessionCookie: []
+      parameters:
+      - $ref: '#/components/parameters/courseId'
+      responses:
+        '200':
+          description: Success
           content:
             application/json:
               schema:
@@ -2067,39 +2134,41 @@ paths:
               schema:
                 $ref: '#/components/schemas/Error'
         '404':
-          description: Course not found; an empty collection returns 200 with [].
+          description: Not found
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
+        '409':
+          description: Unavailable quiz, deadline, attempt limit, changed draft, or protected history
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+      description: Session and course access required. Managers create/edit quizzes, questions, and grades in active
+        courses. Students see visible published/closed quizzes; only enrolled students submit. Answer writes require
+        published, visible, opened quizzes before dueAt; null dates are unbounded. Drafts reserve one attempt and
+        repeat saves reuse it. Finalized answers are immutable, archived as S3 JSON, and bounded by maxAttempts. Questions
+        and quiz deletion are blocked after any draft or finalized attempt. Managers see latest finalized submissions
+        per student with identity; owners see their own history. Scores, question marks, feedback and graded status
+        stay hidden until showResults; answer keys are always manager-only. See README for route-specific payloads
+        and permissions.
     post:
-      x-implementation-status: planned
+      x-implementation-status: implemented
       tags:
       - Quizzes
       operationId: post_api_courses_courseId_quizzes
-      summary: "[Planned] Create quiz"
-      description: Instructor-only for mutations and statistics; never expose correct answers to students before
-        results are released.
-      parameters:
-      - $ref: '#/components/parameters/courseId'
+      summary: Create quiz
       security:
       - sessionCookie: []
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              properties:
-                title:
-                  type: string
-                description:
-                  type: string
-                dueAt:
-                  type: string
-                  format: date-time
-              required:
-              - title
+      parameters:
+      - $ref: '#/components/parameters/courseId'
       responses:
         '201':
           description: Success
@@ -2131,18 +2200,44 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
+        '409':
+          description: Unavailable quiz, deadline, attempt limit, changed draft, or protected history
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+      description: Session and course access required. Managers create/edit quizzes, questions, and grades in active
+        courses. Students see visible published/closed quizzes; only enrolled students submit. Answer writes require
+        published, visible, opened quizzes before dueAt; null dates are unbounded. Drafts reserve one attempt and
+        repeat saves reuse it. Finalized answers are immutable, archived as S3 JSON, and bounded by maxAttempts. Questions
+        and quiz deletion are blocked after any draft or finalized attempt. Managers see latest finalized submissions
+        per student with identity; owners see their own history. Scores, question marks, feedback and graded status
+        stay hidden until showResults; answer keys are always manager-only. See README for route-specific payloads
+        and permissions.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/QuizCreate'
   /api/courses/{courseId}/quizzes/{quizId}:
     get:
-      x-implementation-status: planned
+      x-implementation-status: implemented
       tags:
       - Quizzes
       operationId: get_api_courses_courseId_quizzes_quizId
-      summary: "[Planned] Get quiz with permitted question data"
+      summary: Get quiz and ordered questions
+      security:
+      - sessionCookie: []
       parameters:
       - $ref: '#/components/parameters/courseId'
       - $ref: '#/components/parameters/quizId'
-      security:
-      - sessionCookie: []
       responses:
         '200':
           description: Success
@@ -2174,83 +2269,105 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
+        '409':
+          description: Unavailable quiz, deadline, attempt limit, changed draft, or protected history
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+      description: Session and course access required. Managers create/edit quizzes, questions, and grades in active
+        courses. Students see visible published/closed quizzes; only enrolled students submit. Answer writes require
+        published, visible, opened quizzes before dueAt; null dates are unbounded. Drafts reserve one attempt and
+        repeat saves reuse it. Finalized answers are immutable, archived as S3 JSON, and bounded by maxAttempts. Questions
+        and quiz deletion are blocked after any draft or finalized attempt. Managers see latest finalized submissions
+        per student with identity; owners see their own history. Scores, question marks, feedback and graded status
+        stay hidden until showResults; answer keys are always manager-only. See README for route-specific payloads
+        and permissions.
     patch:
-      x-implementation-status: planned
+      x-implementation-status: implemented
       tags:
       - Quizzes
       operationId: patch_api_courses_courseId_quizzes_quizId
-      summary: "[Planned] Update quiz settings or visibility"
-      description: Instructor-only for mutations and statistics; never expose correct answers to students before
-        results are released.
+      summary: Update quiz settings
+      security:
+      - sessionCookie: []
       parameters:
       - $ref: '#/components/parameters/courseId'
       - $ref: '#/components/parameters/quizId'
-      security:
-      - sessionCookie: []
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Quiz'
+        '400':
+          description: Invalid input
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '409':
+          description: Unavailable quiz, deadline, attempt limit, changed draft, or protected history
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+      description: Session and course access required. Managers create/edit quizzes, questions, and grades in active
+        courses. Students see visible published/closed quizzes; only enrolled students submit. Answer writes require
+        published, visible, opened quizzes before dueAt; null dates are unbounded. Drafts reserve one attempt and
+        repeat saves reuse it. Finalized answers are immutable, archived as S3 JSON, and bounded by maxAttempts. Questions
+        and quiz deletion are blocked after any draft or finalized attempt. Managers see latest finalized submissions
+        per student with identity; owners see their own history. Scores, question marks, feedback and graded status
+        stay hidden until showResults; answer keys are always manager-only. See README for route-specific payloads
+        and permissions.
       requestBody:
         required: true
         content:
           application/json:
             schema:
-              type: object
-              properties:
-                title:
-                  type: string
-                description:
-                  type: string
-                status:
-                  type: string
-                  enum:
-                  - draft
-                  - published
-                  - closed
-                dueAt:
-                  type: string
-                  format: date-time
-      responses:
-        '200':
-          description: Success
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Quiz'
-        '400':
-          description: Invalid input
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Error'
-        '401':
-          description: Unauthorized
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Error'
-        '403':
-          description: Forbidden
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Error'
-        '404':
-          description: Not found
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Error'
+              $ref: '#/components/schemas/QuizUpdate'
     delete:
-      x-implementation-status: planned
+      x-implementation-status: implemented
       tags:
       - Quizzes
       operationId: delete_api_courses_courseId_quizzes_quizId
-      summary: "[Planned] Delete quiz"
-      description: Instructor-only for mutations and statistics; never expose correct answers to students before
-        results are released.
+      summary: Delete quiz without attempts
+      security:
+      - sessionCookie: []
       parameters:
       - $ref: '#/components/parameters/courseId'
       - $ref: '#/components/parameters/quizId'
-      security:
-      - sessionCookie: []
       responses:
         '204':
           description: Success
@@ -2278,41 +2395,102 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
+        '409':
+          description: Unavailable quiz, deadline, attempt limit, changed draft, or protected history
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+      description: Session and course access required. Managers create/edit quizzes, questions, and grades in active
+        courses. Students see visible published/closed quizzes; only enrolled students submit. Answer writes require
+        published, visible, opened quizzes before dueAt; null dates are unbounded. Drafts reserve one attempt and
+        repeat saves reuse it. Finalized answers are immutable, archived as S3 JSON, and bounded by maxAttempts. Questions
+        and quiz deletion are blocked after any draft or finalized attempt. Managers see latest finalized submissions
+        per student with identity; owners see their own history. Scores, question marks, feedback and graded status
+        stay hidden until showResults; answer keys are always manager-only. See README for route-specific payloads
+        and permissions.
   /api/courses/{courseId}/quizzes/{quizId}/questions:
-    post:
-      x-implementation-status: planned
+    get:
+      x-implementation-status: implemented
       tags:
       - Quizzes
-      operationId: post_api_courses_courseId_quizzes_quizId_questions
-      summary: "[Planned] Add quiz question"
-      description: Instructor-only for mutations and statistics; never expose correct answers to students before
-        results are released.
+      operationId: get_api_courses_courseId_quizzes_quizId_questions
+      summary: List questions
+      security:
+      - sessionCookie: []
       parameters:
       - $ref: '#/components/parameters/courseId'
       - $ref: '#/components/parameters/quizId'
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Question'
+        '400':
+          description: Invalid input
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '409':
+          description: Unavailable quiz, deadline, attempt limit, changed draft, or protected history
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+      description: Session and course access required. Managers create/edit quizzes, questions, and grades in active
+        courses. Students see visible published/closed quizzes; only enrolled students submit. Answer writes require
+        published, visible, opened quizzes before dueAt; null dates are unbounded. Drafts reserve one attempt and
+        repeat saves reuse it. Finalized answers are immutable, archived as S3 JSON, and bounded by maxAttempts. Questions
+        and quiz deletion are blocked after any draft or finalized attempt. Managers see latest finalized submissions
+        per student with identity; owners see their own history. Scores, question marks, feedback and graded status
+        stay hidden until showResults; answer keys are always manager-only. See README for route-specific payloads
+        and permissions.
+    post:
+      x-implementation-status: implemented
+      tags:
+      - Quizzes
+      operationId: post_api_courses_courseId_quizzes_quizId_questions
+      summary: Add question
       security:
       - sessionCookie: []
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              properties:
-                type:
-                  type: string
-                prompt:
-                  type: string
-                options:
-                  type: array
-                  items:
-                    type: string
-                points:
-                  type: number
-                correctAnswer: {}
-              required:
-              - type
-              - prompt
+      parameters:
+      - $ref: '#/components/parameters/courseId'
+      - $ref: '#/components/parameters/quizId'
       responses:
         '201':
           description: Success
@@ -2344,37 +2522,45 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
-  /api/courses/{courseId}/quizzes/{quizId}/questions/{questionId}:
-    patch:
-      x-implementation-status: planned
-      tags:
-      - Quizzes
-      operationId: patch_api_courses_courseId_quizzes_quizId_questions_questionId
-      summary: "[Planned] Edit quiz question"
-      description: Instructor-only for mutations and statistics; never expose correct answers to students before
-        results are released.
-      parameters:
-      - $ref: '#/components/parameters/courseId'
-      - $ref: '#/components/parameters/quizId'
-      - $ref: '#/components/parameters/questionId'
-      security:
-      - sessionCookie: []
+        '409':
+          description: Unavailable quiz, deadline, attempt limit, changed draft, or protected history
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+      description: Session and course access required. Managers create/edit quizzes, questions, and grades in active
+        courses. Students see visible published/closed quizzes; only enrolled students submit. Answer writes require
+        published, visible, opened quizzes before dueAt; null dates are unbounded. Drafts reserve one attempt and
+        repeat saves reuse it. Finalized answers are immutable, archived as S3 JSON, and bounded by maxAttempts. Questions
+        and quiz deletion are blocked after any draft or finalized attempt. Managers see latest finalized submissions
+        per student with identity; owners see their own history. Scores, question marks, feedback and graded status
+        stay hidden until showResults; answer keys are always manager-only. See README for route-specific payloads
+        and permissions.
       requestBody:
         required: true
         content:
           application/json:
             schema:
-              type: object
-              properties:
-                prompt:
-                  type: string
-                options:
-                  type: array
-                  items:
-                    type: string
-                points:
-                  type: number
-                correctAnswer: {}
+              $ref: '#/components/schemas/QuizQuestionInput'
+  /api/courses/{courseId}/quizzes/{quizId}/questions/{questionId}:
+    patch:
+      x-implementation-status: implemented
+      tags:
+      - Quizzes
+      operationId: patch_api_courses_courseId_quizzes_quizId_questions_questionId
+      summary: Replace question definition
+      security:
+      - sessionCookie: []
+      parameters:
+      - $ref: '#/components/parameters/courseId'
+      - $ref: '#/components/parameters/quizId'
+      - $ref: '#/components/parameters/questionId'
       responses:
         '200':
           description: Success
@@ -2406,20 +2592,44 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
+        '409':
+          description: Unavailable quiz, deadline, attempt limit, changed draft, or protected history
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+      description: Session and course access required. Managers create/edit quizzes, questions, and grades in active
+        courses. Students see visible published/closed quizzes; only enrolled students submit. Answer writes require
+        published, visible, opened quizzes before dueAt; null dates are unbounded. Drafts reserve one attempt and
+        repeat saves reuse it. Finalized answers are immutable, archived as S3 JSON, and bounded by maxAttempts. Questions
+        and quiz deletion are blocked after any draft or finalized attempt. Managers see latest finalized submissions
+        per student with identity; owners see their own history. Scores, question marks, feedback and graded status
+        stay hidden until showResults; answer keys are always manager-only. See README for route-specific payloads
+        and permissions.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/QuizQuestionInput'
     delete:
-      x-implementation-status: planned
+      x-implementation-status: implemented
       tags:
       - Quizzes
       operationId: delete_api_courses_courseId_quizzes_quizId_questions_questionId
-      summary: "[Planned] Delete quiz question"
-      description: Instructor-only for mutations and statistics; never expose correct answers to students before
-        results are released.
+      summary: Delete question
+      security:
+      - sessionCookie: []
       parameters:
       - $ref: '#/components/parameters/courseId'
       - $ref: '#/components/parameters/quizId'
       - $ref: '#/components/parameters/questionId'
-      security:
-      - sessionCookie: []
       responses:
         '204':
           description: Success
@@ -2447,20 +2657,174 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
-  /api/courses/{courseId}/quizzes/{quizId}/statistics:
+        '409':
+          description: Unavailable quiz, deadline, attempt limit, changed draft, or protected history
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+      description: Session and course access required. Managers create/edit quizzes, questions, and grades in active
+        courses. Students see visible published/closed quizzes; only enrolled students submit. Answer writes require
+        published, visible, opened quizzes before dueAt; null dates are unbounded. Drafts reserve one attempt and
+        repeat saves reuse it. Finalized answers are immutable, archived as S3 JSON, and bounded by maxAttempts. Questions
+        and quiz deletion are blocked after any draft or finalized attempt. Managers see latest finalized submissions
+        per student with identity; owners see their own history. Scores, question marks, feedback and graded status
+        stay hidden until showResults; answer keys are always manager-only. See README for route-specific payloads
+        and permissions.
+  /api/courses/{courseId}/quizzes/{quizId}/draft:
     get:
-      x-implementation-status: planned
+      x-implementation-status: implemented
       tags:
       - Quizzes
-      operationId: get_api_courses_courseId_quizzes_quizId_statistics
-      summary: "[Planned] Get quiz submission and grading statistics"
-      description: Instructor-only for mutations and statistics; never expose correct answers to students before
-        results are released.
+      operationId: get_api_courses_courseId_quizzes_quizId_draft
+      summary: Get current draft
+      security:
+      - sessionCookie: []
       parameters:
       - $ref: '#/components/parameters/courseId'
       - $ref: '#/components/parameters/quizId'
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                anyOf:
+                - $ref: '#/components/schemas/Submission'
+                - type: object
+                  nullable: true
+                  enum:
+                  - null
+        '400':
+          description: Invalid input
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '409':
+          description: Unavailable quiz, deadline, attempt limit, changed draft, or protected history
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+      description: Session and course access required. Managers create/edit quizzes, questions, and grades in active
+        courses. Students see visible published/closed quizzes; only enrolled students submit. Answer writes require
+        published, visible, opened quizzes before dueAt; null dates are unbounded. Drafts reserve one attempt and
+        repeat saves reuse it. Finalized answers are immutable, archived as S3 JSON, and bounded by maxAttempts. Questions
+        and quiz deletion are blocked after any draft or finalized attempt. Managers see latest finalized submissions
+        per student with identity; owners see their own history. Scores, question marks, feedback and graded status
+        stay hidden until showResults; answer keys are always manager-only. See README for route-specific payloads
+        and permissions.
+    put:
+      x-implementation-status: implemented
+      tags:
+      - Quizzes
+      operationId: put_api_courses_courseId_quizzes_quizId_draft
+      summary: Save current draft
       security:
       - sessionCookie: []
+      parameters:
+      - $ref: '#/components/parameters/courseId'
+      - $ref: '#/components/parameters/quizId'
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Submission'
+        '400':
+          description: Invalid input
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '409':
+          description: Unavailable quiz, deadline, attempt limit, changed draft, or protected history
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+      description: Session and course access required. Managers create/edit quizzes, questions, and grades in active
+        courses. Students see visible published/closed quizzes; only enrolled students submit. Answer writes require
+        published, visible, opened quizzes before dueAt; null dates are unbounded. Drafts reserve one attempt and
+        repeat saves reuse it. Finalized answers are immutable, archived as S3 JSON, and bounded by maxAttempts. Questions
+        and quiz deletion are blocked after any draft or finalized attempt. Managers see latest finalized submissions
+        per student with identity; owners see their own history. Scores, question marks, feedback and graded status
+        stay hidden until showResults; answer keys are always manager-only. See README for route-specific payloads
+        and permissions.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/QuizAnswerRequest'
+  /api/courses/{courseId}/quizzes/{quizId}/statistics:
+    get:
+      x-implementation-status: implemented
+      tags:
+      - Quizzes
+      operationId: get_api_courses_courseId_quizzes_quizId_statistics
+      summary: Get active-student statistics
+      security:
+      - sessionCookie: []
+      parameters:
+      - $ref: '#/components/parameters/courseId'
+      - $ref: '#/components/parameters/quizId'
       responses:
         '200':
           description: Success
@@ -2492,70 +2856,41 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
+        '409':
+          description: Unavailable quiz, deadline, attempt limit, changed draft, or protected history
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+      description: Session and course access required. Managers create/edit quizzes, questions, and grades in active
+        courses. Students see visible published/closed quizzes; only enrolled students submit. Answer writes require
+        published, visible, opened quizzes before dueAt; null dates are unbounded. Drafts reserve one attempt and
+        repeat saves reuse it. Finalized answers are immutable, archived as S3 JSON, and bounded by maxAttempts. Questions
+        and quiz deletion are blocked after any draft or finalized attempt. Managers see latest finalized submissions
+        per student with identity; owners see their own history. Scores, question marks, feedback and graded status
+        stay hidden until showResults; answer keys are always manager-only. See README for route-specific payloads
+        and permissions.
   /api/courses/{courseId}/quizzes/{quizId}/submissions:
-    post:
-      x-implementation-status: planned
-      tags:
-      - Quiz Submissions
-      operationId: post_api_courses_courseId_quizzes_quizId_submissions
-      summary: "[Planned] Start quiz draft"
-      parameters:
-      - $ref: '#/components/parameters/courseId'
-      - $ref: '#/components/parameters/quizId'
-      security:
-      - sessionCookie: []
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              properties: {}
-      responses:
-        '201':
-          description: Success
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Submission'
-        '400':
-          description: Invalid input
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Error'
-        '401':
-          description: Unauthorized
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Error'
-        '403':
-          description: Forbidden
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Error'
-        '404':
-          description: Not found
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Error'
     get:
-      x-implementation-status: planned
+      x-implementation-status: implemented
       tags:
-      - Quiz Submissions
+      - Quizzes
       operationId: get_api_courses_courseId_quizzes_quizId_submissions
-      summary: "[Planned] List quiz submissions for instructor"
+      summary: List latest finalized submissions per student
+      security:
+      - sessionCookie: []
       parameters:
       - $ref: '#/components/parameters/courseId'
       - $ref: '#/components/parameters/quizId'
-      security:
-      - sessionCookie: []
       responses:
         '200':
-          description: Returns an empty array when no items match.
+          description: Success
           content:
             application/json:
               schema:
@@ -2581,141 +2916,42 @@ paths:
               schema:
                 $ref: '#/components/schemas/Error'
         '404':
-          description: Quiz not found; an empty collection returns 200 with [].
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Error'
-  /api/courses/{courseId}/quizzes/{quizId}/submissions/me:
-    get:
-      x-implementation-status: planned
-      tags:
-      - Quiz Submissions
-      operationId: get_api_courses_courseId_quizzes_quizId_submissions_me
-      summary: "[Planned] Get own draft or attempt"
-      parameters:
-      - $ref: '#/components/parameters/courseId'
-      - $ref: '#/components/parameters/quizId'
-      security:
-      - sessionCookie: []
-      responses:
-        '200':
-          description: Success
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Submission'
-        '400':
-          description: Invalid input
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Error'
-        '401':
-          description: Unauthorized
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Error'
-        '403':
-          description: Forbidden
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Error'
-        '404':
           description: Not found
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
-  /api/courses/{courseId}/quizzes/{quizId}/submissions/{submissionId}:
-    patch:
-      x-implementation-status: planned
-      tags:
-      - Quiz Submissions
-      operationId: patch_api_courses_courseId_quizzes_quizId_submissions_submissionId
-      summary: "[Planned] Save draft answers"
-      parameters:
-      - $ref: '#/components/parameters/courseId'
-      - $ref: '#/components/parameters/quizId'
-      - $ref: '#/components/parameters/submissionId'
-      security:
-      - sessionCookie: []
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              properties:
-                answers:
-                  type: array
-                  items:
-                    type: object
-                    properties:
-                      questionId:
-                        type: integer
-                        format: int32
-                        minimum: 1
-                        maximum: 2147483647
-                      answer: {}
-                    required:
-                    - questionId
-                    - answer
-              required:
-              - answers
-      responses:
-        '200':
-          description: Success
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Submission'
-        '400':
-          description: Invalid input
+        '409':
+          description: Unavailable quiz, deadline, attempt limit, changed draft, or protected history
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
-        '401':
-          description: Unauthorized
+        '500':
+          description: Internal server error
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
-        '403':
-          description: Forbidden
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Error'
-        '404':
-          description: Not found
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Error'
-  /api/courses/{courseId}/quizzes/{quizId}/submissions/{submissionId}/submit:
+      description: Session and course access required. Managers create/edit quizzes, questions, and grades in active
+        courses. Students see visible published/closed quizzes; only enrolled students submit. Answer writes require
+        published, visible, opened quizzes before dueAt; null dates are unbounded. Drafts reserve one attempt and
+        repeat saves reuse it. Finalized answers are immutable, archived as S3 JSON, and bounded by maxAttempts. Questions
+        and quiz deletion are blocked after any draft or finalized attempt. Managers see latest finalized submissions
+        per student with identity; owners see their own history. Scores, question marks, feedback and graded status
+        stay hidden until showResults; answer keys are always manager-only. See README for route-specific payloads
+        and permissions.
     post:
-      x-implementation-status: planned
+      x-implementation-status: implemented
       tags:
-      - Quiz Submissions
-      operationId: post_api_courses_courseId_quizzes_quizId_submissions_submissionId_submit
-      summary: "[Planned] Finalize quiz submission"
+      - Quizzes
+      operationId: post_api_courses_courseId_quizzes_quizId_submissions
+      summary: Finalize current or next attempt
+      security:
+      - sessionCookie: []
       parameters:
       - $ref: '#/components/parameters/courseId'
       - $ref: '#/components/parameters/quizId'
-      - $ref: '#/components/parameters/submissionId'
-      security:
-      - sessionCookie: []
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              properties: {}
       responses:
         '201':
           description: Success
@@ -2747,76 +2983,110 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
-  /api/courses/{courseId}/quizzes/{quizId}/submissions/{submissionId}/result:
-    get:
-      x-implementation-status: planned
-      tags:
-      - Quiz Submissions
-      operationId: get_api_courses_courseId_quizzes_quizId_submissions_submissionId_result
-      summary: "[Planned] View authorized submission result"
-      parameters:
-      - $ref: '#/components/parameters/courseId'
-      - $ref: '#/components/parameters/quizId'
-      - $ref: '#/components/parameters/submissionId'
-      security:
-      - sessionCookie: []
-      responses:
-        '200':
-          description: Success
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Submission'
-        '400':
-          description: Invalid input
+        '409':
+          description: Unavailable quiz, deadline, attempt limit, changed draft, or protected history
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
-        '401':
-          description: Unauthorized
+        '500':
+          description: Internal server error
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
-        '403':
-          description: Forbidden
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Error'
-        '404':
-          description: Not found
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Error'
-  /api/courses/{courseId}/quizzes/{quizId}/submissions/{submissionId}/grade:
-    patch:
-      x-implementation-status: planned
-      tags:
-      - Quiz Submissions
-      operationId: patch_api_courses_courseId_quizzes_quizId_submissions_submissionId_grade
-      summary: "[Planned] Grade submission"
-      parameters:
-      - $ref: '#/components/parameters/courseId'
-      - $ref: '#/components/parameters/quizId'
-      - $ref: '#/components/parameters/submissionId'
-      security:
-      - sessionCookie: []
+      description: Session and course access required. Managers create/edit quizzes, questions, and grades in active
+        courses. Students see visible published/closed quizzes; only enrolled students submit. Answer writes require
+        published, visible, opened quizzes before dueAt; null dates are unbounded. Drafts reserve one attempt and
+        repeat saves reuse it. Finalized answers are immutable, archived as S3 JSON, and bounded by maxAttempts. Questions
+        and quiz deletion are blocked after any draft or finalized attempt. Managers see latest finalized submissions
+        per student with identity; owners see their own history. Scores, question marks, feedback and graded status
+        stay hidden until showResults; answer keys are always manager-only. See README for route-specific payloads
+        and permissions.
       requestBody:
         required: true
         content:
           application/json:
             schema:
-              type: object
-              properties:
-                grade:
-                  type: number
-                feedback:
-                  type: string
-              required:
-              - grade
+              $ref: '#/components/schemas/QuizAnswerRequest'
+  /api/courses/{courseId}/quizzes/{quizId}/submissions/me:
+    get:
+      x-implementation-status: implemented
+      tags:
+      - Quizzes
+      operationId: get_api_courses_courseId_quizzes_quizId_submissions_me
+      summary: List own attempt history
+      security:
+      - sessionCookie: []
+      parameters:
+      - $ref: '#/components/parameters/courseId'
+      - $ref: '#/components/parameters/quizId'
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Submission'
+        '400':
+          description: Invalid input
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '409':
+          description: Unavailable quiz, deadline, attempt limit, changed draft, or protected history
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+      description: Session and course access required. Managers create/edit quizzes, questions, and grades in active
+        courses. Students see visible published/closed quizzes; only enrolled students submit. Answer writes require
+        published, visible, opened quizzes before dueAt; null dates are unbounded. Drafts reserve one attempt and
+        repeat saves reuse it. Finalized answers are immutable, archived as S3 JSON, and bounded by maxAttempts. Questions
+        and quiz deletion are blocked after any draft or finalized attempt. Managers see latest finalized submissions
+        per student with identity; owners see their own history. Scores, question marks, feedback and graded status
+        stay hidden until showResults; answer keys are always manager-only. See README for route-specific payloads
+        and permissions.
+  /api/courses/{courseId}/quizzes/{quizId}/submissions/{submissionId}:
+    get:
+      x-implementation-status: implemented
+      tags:
+      - Quizzes
+      operationId: get_api_courses_courseId_quizzes_quizId_submissions_submissionId
+      summary: Get authorized attempt
+      security:
+      - sessionCookie: []
+      parameters:
+      - $ref: '#/components/parameters/courseId'
+      - $ref: '#/components/parameters/quizId'
+      - $ref: '#/components/parameters/submissionId'
       responses:
         '200':
           description: Success
@@ -2848,6 +3118,288 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
+        '409':
+          description: Unavailable quiz, deadline, attempt limit, changed draft, or protected history
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+      description: Session and course access required. Managers create/edit quizzes, questions, and grades in active
+        courses. Students see visible published/closed quizzes; only enrolled students submit. Answer writes require
+        published, visible, opened quizzes before dueAt; null dates are unbounded. Drafts reserve one attempt and
+        repeat saves reuse it. Finalized answers are immutable, archived as S3 JSON, and bounded by maxAttempts. Questions
+        and quiz deletion are blocked after any draft or finalized attempt. Managers see latest finalized submissions
+        per student with identity; owners see their own history. Scores, question marks, feedback and graded status
+        stay hidden until showResults; answer keys are always manager-only. See README for route-specific payloads
+        and permissions.
+    patch:
+      x-implementation-status: implemented
+      tags:
+      - Quizzes
+      operationId: patch_api_courses_courseId_quizzes_quizId_submissions_submissionId
+      summary: Save answers to own draft
+      security:
+      - sessionCookie: []
+      parameters:
+      - $ref: '#/components/parameters/courseId'
+      - $ref: '#/components/parameters/quizId'
+      - $ref: '#/components/parameters/submissionId'
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Submission'
+        '400':
+          description: Invalid input
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '409':
+          description: Unavailable quiz, deadline, attempt limit, changed draft, or protected history
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+      description: Session and course access required. Managers create/edit quizzes, questions, and grades in active
+        courses. Students see visible published/closed quizzes; only enrolled students submit. Answer writes require
+        published, visible, opened quizzes before dueAt; null dates are unbounded. Drafts reserve one attempt and
+        repeat saves reuse it. Finalized answers are immutable, archived as S3 JSON, and bounded by maxAttempts. Questions
+        and quiz deletion are blocked after any draft or finalized attempt. Managers see latest finalized submissions
+        per student with identity; owners see their own history. Scores, question marks, feedback and graded status
+        stay hidden until showResults; answer keys are always manager-only. See README for route-specific payloads
+        and permissions.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/QuizAnswerRequest'
+  /api/courses/{courseId}/quizzes/{quizId}/submissions/{submissionId}/submit:
+    post:
+      x-implementation-status: implemented
+      tags:
+      - Quizzes
+      operationId: post_api_courses_courseId_quizzes_quizId_submissions_submissionId_submit
+      summary: Finalize specific draft
+      security:
+      - sessionCookie: []
+      parameters:
+      - $ref: '#/components/parameters/courseId'
+      - $ref: '#/components/parameters/quizId'
+      - $ref: '#/components/parameters/submissionId'
+      responses:
+        '201':
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Submission'
+        '400':
+          description: Invalid input
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '409':
+          description: Unavailable quiz, deadline, attempt limit, changed draft, or protected history
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+      description: Session and course access required. Managers create/edit quizzes, questions, and grades in active
+        courses. Students see visible published/closed quizzes; only enrolled students submit. Answer writes require
+        published, visible, opened quizzes before dueAt; null dates are unbounded. Drafts reserve one attempt and
+        repeat saves reuse it. Finalized answers are immutable, archived as S3 JSON, and bounded by maxAttempts. Questions
+        and quiz deletion are blocked after any draft or finalized attempt. Managers see latest finalized submissions
+        per student with identity; owners see their own history. Scores, question marks, feedback and graded status
+        stay hidden until showResults; answer keys are always manager-only. See README for route-specific payloads
+        and permissions.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/QuizAnswerRequest'
+  /api/courses/{courseId}/quizzes/{quizId}/submissions/{submissionId}/result:
+    get:
+      x-implementation-status: implemented
+      tags:
+      - Quizzes
+      operationId: get_api_courses_courseId_quizzes_quizId_submissions_submissionId_result
+      summary: Read released results and archived S3 answers
+      security:
+      - sessionCookie: []
+      parameters:
+      - $ref: '#/components/parameters/courseId'
+      - $ref: '#/components/parameters/quizId'
+      - $ref: '#/components/parameters/submissionId'
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Submission'
+        '400':
+          description: Invalid input
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '409':
+          description: Unavailable quiz, deadline, attempt limit, changed draft, or protected history
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+      description: Owner after showResults release, or instructor/admin reviewing finalized work. Reads answers from
+        private S3 JSON and combines them with stored grading. Never returns storage keys or answer keys.
+  /api/courses/{courseId}/quizzes/{quizId}/submissions/{submissionId}/grade:
+    patch:
+      x-implementation-status: implemented
+      tags:
+      - Quizzes
+      operationId: patch_api_courses_courseId_quizzes_quizId_submissions_submissionId_grade
+      summary: Grade questions and feedback
+      security:
+      - sessionCookie: []
+      parameters:
+      - $ref: '#/components/parameters/courseId'
+      - $ref: '#/components/parameters/quizId'
+      - $ref: '#/components/parameters/submissionId'
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Submission'
+        '400':
+          description: Invalid input
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '409':
+          description: Unavailable quiz, deadline, attempt limit, changed draft, or protected history
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+      description: Instructor/admin only in an active course. Merge partial per-question manual marks (0 through question
+        points) with automatic grading. Aggregate score stays null until all questions are graded. Feedback is optional;
+        showResults releases student marks.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/QuizGrade'
   /api/courses/{courseId}/resources:
     get:
       x-implementation-status: implemented
@@ -3699,6 +4251,8 @@ components:
       - allowResubmission
       - createdAt
       - updatedAt
+      - gradesVisible
+      - maxMark
       properties:
         id: &id001
           type: integer
@@ -3731,6 +4285,16 @@ components:
         updatedAt:
           type: string
           format: date-time
+        gradesVisible:
+          type: boolean
+          description: Release stored marks to students; instructors and admins can always see marks.
+          default: false
+        maxMark:
+          type: number
+          minimum: 0
+          exclusiveMinimum: true
+          description: Positive finite points maximum; awarded marks may exceed it for bonus credit.
+          default: 100
     AssignmentCreate:
       type: object
       additionalProperties: false
@@ -3742,6 +4306,16 @@ components:
         dueAt: *id004
         isVisible: *id005
         allowResubmission: *id006
+        gradesVisible:
+          type: boolean
+          description: Release stored marks to students; instructors and admins can always see marks.
+          default: false
+        maxMark:
+          type: number
+          minimum: 0
+          exclusiveMinimum: true
+          description: Positive finite points maximum; awarded marks may exceed it for bonus credit.
+          default: 100
     AssignmentUpdate:
       type: object
       additionalProperties: false
@@ -3763,6 +4337,14 @@ components:
           type: boolean
         allowResubmission:
           type: boolean
+        gradesVisible:
+          type: boolean
+          description: Release stored marks to students; instructors and admins can always see marks.
+        maxMark:
+          type: number
+          minimum: 0
+          exclusiveMinimum: true
+          description: Positive finite points maximum; awarded marks may exceed it for bonus credit.
     AssignmentSubmission:
       type: object
       required:
@@ -3773,6 +4355,7 @@ components:
       - originalFilename
       - submittedAt
       - student
+      - mark
       properties:
         id: *id001
         courseId: *id001
@@ -3796,51 +4379,267 @@ components:
             email:
               type: string
               format: email
+        mark:
+          type: number
+          minimum: 0
+          nullable: true
+          description: Nonnegative finite points; may exceed assignment maxMark for bonus credit. Null when ungraded
+            or hidden.
+    AssignmentGrade:
+      type: object
+      additionalProperties: false
+      required:
+      - mark
+      properties:
+        mark:
+          type: number
+          minimum: 0
+          nullable: true
+          description: Nonnegative finite points, including bonus marks above assignment maxMark, or null to clear grading.
     Question:
       type: object
+      required:
+      - id
+      - position
+      - type
+      - prompt
+      - options
+      - allowMultiple
+      - points
       properties:
         id:
           type: integer
           format: int32
           minimum: 1
           maximum: 2147483647
+        position:
+          type: integer
+          minimum: 0
         type:
           type: string
           enum:
-          - multiple_choice
           - short_answer
-          - true_false
+          - multiple_choice
         prompt:
           type: string
+          minLength: 1
+          maxLength: 20000
         options:
           type: array
+          nullable: true
+          minItems: 2
+          maxItems: 20
+          uniqueItems: true
           items:
             type: string
+            maxLength: 1000
+        allowMultiple:
+          type: boolean
+          default: false
+        answerKey:
+          anyOf:
+          - type: string
+            nullable: true
+          - type: array
+            items:
+              type: string
+          description: Private correct text or exact set of option values. Null/omitted means manual grading; single
+            selection needs one correct option.
         points:
           type: number
+          minimum: 0
+          maximum: 999999.99
+          multipleOf: 0.01
+          default: 1
+    QuizQuestionInput:
+      type: object
+      additionalProperties: false
       required:
-      - id
       - type
       - prompt
-    Quiz:
-      type: object
       properties:
-        id:
-          type: integer
-          format: int32
-          minimum: 1
-          maximum: 2147483647
+        type:
+          type: string
+          enum:
+          - short_answer
+          - multiple_choice
+        prompt:
+          type: string
+          minLength: 1
+          maxLength: 20000
+        options:
+          type: array
+          nullable: true
+          minItems: 2
+          maxItems: 20
+          uniqueItems: true
+          items:
+            type: string
+            maxLength: 1000
+        allowMultiple:
+          type: boolean
+          default: false
+        answerKey:
+          anyOf:
+          - type: string
+            nullable: true
+          - type: array
+            items:
+              type: string
+          description: Private correct text or exact set of option values. Null/omitted means manual grading; single
+            selection needs one correct option.
+        points:
+          type: number
+          minimum: 0
+          maximum: 999999.99
+          multipleOf: 0.01
+          default: 1
+    QuizCreate:
+      type: object
+      additionalProperties: false
+      required:
+      - title
+      properties:
         title:
           type: string
+          minLength: 1
+          maxLength: 200
         description:
           type: string
+          nullable: true
+          maxLength: 20000
+        opensAt:
+          type: string
+          format: date-time
+          nullable: true
+        dueAt:
+          type: string
+          format: date-time
+          nullable: true
+        isVisible:
+          type: boolean
+          default: false
         status:
           type: string
           enum:
           - draft
           - published
           - closed
+          default: draft
+        maxAttempts:
+          type: integer
+          minimum: 1
+          maximum: 2147483647
+          default: 1
+        showResults:
+          type: boolean
+          default: false
+    QuizUpdate:
+      type: object
+      additionalProperties: false
+      minProperties: 1
+      properties:
+        title:
+          type: string
+          minLength: 1
+          maxLength: 200
+        description:
+          type: string
+          nullable: true
+          maxLength: 20000
+        opensAt:
+          type: string
+          format: date-time
+          nullable: true
         dueAt:
+          type: string
+          format: date-time
+          nullable: true
+        isVisible:
+          type: boolean
+        status:
+          type: string
+          enum:
+          - draft
+          - published
+          - closed
+        maxAttempts:
+          type: integer
+          minimum: 1
+          maximum: 2147483647
+        showResults:
+          type: boolean
+    Quiz:
+      type: object
+      required:
+      - id
+      - courseId
+      - createdBy
+      - title
+      - description
+      - opensAt
+      - dueAt
+      - isVisible
+      - status
+      - maxAttempts
+      - showResults
+      - createdAt
+      - updatedAt
+      properties:
+        id:
+          type: integer
+          format: int32
+          minimum: 1
+          maximum: 2147483647
+        courseId:
+          type: integer
+          format: int32
+          minimum: 1
+          maximum: 2147483647
+        createdBy:
+          type: integer
+          format: int32
+          minimum: 1
+          maximum: 2147483647
+        title:
+          type: string
+          minLength: 1
+          maxLength: 200
+        description:
+          type: string
+          nullable: true
+          maxLength: 20000
+        opensAt:
+          type: string
+          format: date-time
+          nullable: true
+        dueAt:
+          type: string
+          format: date-time
+          nullable: true
+        isVisible:
+          type: boolean
+          default: false
+        status:
+          type: string
+          enum:
+          - draft
+          - published
+          - closed
+          default: draft
+        maxAttempts:
+          type: integer
+          minimum: 1
+          maximum: 2147483647
+          default: 1
+        showResults:
+          type: boolean
+          default: false
+        createdAt:
+          type: string
+          format: date-time
+          nullable: true
+        updatedAt:
           type: string
           format: date-time
           nullable: true
@@ -3848,14 +4647,81 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/Question'
+    QuizAnswerRequest:
+      type: object
+      additionalProperties: false
       required:
-      - id
-      - title
-      - status
+      - answers
+      properties:
+        answers:
+          type: object
+          maxProperties: 100
+          additionalProperties:
+            oneOf:
+            - type: string
+              maxLength: 20000
+            - type: array
+              maxItems: 20
+              uniqueItems: true
+              items:
+                type: string
+                maxLength: 1000
+          description: Map positive question IDs to text or arrays of valid option values. Single-select permits at
+            most one choice.
+    QuizGrade:
+      type: object
+      additionalProperties: false
+      required:
+      - grades
+      properties:
+        grades:
+          type: array
+          minItems: 1
+          maxItems: 100
+          items:
+            type: object
+            additionalProperties: false
+            required:
+            - questionId
+            - mark
+            properties:
+              questionId:
+                type: integer
+                format: int32
+                minimum: 1
+                maximum: 2147483647
+              mark:
+                type: number
+                minimum: 0
+                maximum: 999999.99
+                multipleOf: 0.01
+        feedback:
+          type: string
+          nullable: true
+          maxLength: 20000
     Submission:
       type: object
+      required:
+      - id
+      - courseId
+      - quizId
+      - studentId
+      - attemptNumber
+      - status
+      - answers
+      - score
+      - questionMarks
+      - feedback
+      - submittedAt
+      - updatedAt
+      - student
       properties:
         id:
+          type: integer
+          format: int32
+          minimum: 1
+          maximum: 2147483647
+        courseId:
           type: integer
           format: int32
           minimum: 1
@@ -3870,6 +4736,9 @@ components:
           format: int32
           minimum: 1
           maximum: 2147483647
+        attemptNumber:
+          type: integer
+          minimum: 1
         status:
           type: string
           enum:
@@ -3877,29 +4746,68 @@ components:
           - submitted
           - graded
         answers:
-          type: array
-          items:
-            type: object
-            properties:
-              questionId:
-                type: integer
-                format: int32
-                minimum: 1
-                maximum: 2147483647
-              answer: {}
-            required:
-            - questionId
-            - answer
-        grade:
+          type: object
+          maxProperties: 100
+          additionalProperties:
+            oneOf:
+            - type: string
+              maxLength: 20000
+            - type: array
+              maxItems: 20
+              uniqueItems: true
+              items:
+                type: string
+                maxLength: 1000
+          description: Map positive question IDs to text or arrays of valid option values. Single-select permits at
+            most one choice.
+        score:
           type: number
           nullable: true
-        fileKey:
+        questionMarks:
+          type: object
+          nullable: true
+          additionalProperties:
+            type: object
+            required:
+            - mark
+            - source
+            properties:
+              mark:
+                type: number
+                minimum: 0
+              source:
+                type: string
+                enum:
+                - auto
+                - manual
+        feedback:
           type: string
           nullable: true
-      required:
-      - id
-      - quizId
-      - status
+        submittedAt:
+          type: string
+          format: date-time
+          nullable: true
+        updatedAt:
+          type: string
+          format: date-time
+          nullable: true
+        student:
+          type: object
+          required:
+          - id
+          - name
+          - email
+          properties:
+            id:
+              type: integer
+              format: int32
+              minimum: 1
+              maximum: 2147483647
+            name:
+              type: string
+            email:
+              type: string
+              format: email
     Resource:
       type: object
       properties:
@@ -4133,12 +5041,28 @@ components:
       maximum: 2147483647
     QuizStatistics:
       type: object
+      required:
+      - quizId
+      - eligibleStudents
+      - submittedCount
+      - gradedCount
+      - submissionRate
       properties:
+        quizId:
+          type: integer
+          format: int32
+          minimum: 1
+          maximum: 2147483647
         eligibleStudents:
           type: integer
+          minimum: 0
         submittedCount:
           type: integer
-        submissionRate:
-          type: number
+          minimum: 0
         gradedCount:
           type: integer
+          minimum: 0
+        submissionRate:
+          type: number
+          minimum: 0
+          maximum: 1
