@@ -2,6 +2,7 @@ import { DeleteObjectCommand, GetObjectCommand, PutObjectCommand, S3Client } fro
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import { config } from '../config';
 import type { PresignedUrlResponse } from '../types';
+import type { Readable } from 'node:stream';
 import { HttpError } from '../errors';
 
 const URL_TTL_SECONDS = 300;
@@ -25,6 +26,27 @@ function s3(): S3Client {
 export async function putPdf(key: string, body: Buffer): Promise<void> {
   const { bucket } = settings();
   await s3().send(new PutObjectCommand({ Bucket: bucket, Key: key, Body: body, ContentType: 'application/pdf' }));
+}
+
+// Read a stored PDF for extraction with a bounded download time and size.
+export async function getPdf(key: string): Promise<Uint8Array> {
+  const { bucket } = settings();
+  const signal = AbortSignal.timeout(30000);
+  const result = await s3().send(new GetObjectCommand({ Bucket: bucket, Key: key }), { abortSignal: signal });
+  if (!result.Body) throw new Error('Stored PDF has no body');
+  const chunks: Uint8Array[] = [];
+  let size = 0;
+  const body = result.Body as Readable;
+  for await (const chunk of body as AsyncIterable<Uint8Array>) {
+    size += chunk.byteLength;
+    if (size > 10 * 1024 * 1024) {
+      body.destroy();
+      throw new Error('Stored PDF exceeds the 10 MB extraction limit');
+    }
+    chunks.push(chunk);
+  }
+  if (!size) throw new Error('Stored PDF is empty');
+  return Buffer.concat(chunks);
 }
 
 // Remove an object. A missing object is already the desired end state.

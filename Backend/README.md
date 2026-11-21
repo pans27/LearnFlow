@@ -20,7 +20,7 @@ that are not implemented yet.
 | Assignments and quizzes | Database and dashboard summaries exist; standalone assessment endpoints are not implemented |
 | Submissions and grading | Database and dashboard statistics exist; standalone endpoints are not implemented |
 | Resources | Implemented: list, upload, detail, preview/download URLs, and deletion backed by S3 |
-| PDF extraction and search | Uploads create pending extraction jobs; extraction workers and search endpoints are not implemented |
+| PDF extraction and search | Uploads enqueue jobs; API-managed runner and parsing thread framework exist; parser implementation and search endpoints remain TODO |
 
 The health endpoint checks process liveness; use `npm run db:check` to check the
 database connection.
