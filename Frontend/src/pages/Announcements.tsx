@@ -25,7 +25,7 @@ export default function Announcements() {
   const [formError, setFormError] = useState("");
   const canManage =
     course.role === "instructor" || user?.systemRole === "admin";
-  const canWrite = canManage && course.status === "active";
+  const canWrite = canManage && !course.readOnly && course.status === "active";
   const items = result.data?.filter(
     (a) => !announcementId || a.id === announcementId,
   );

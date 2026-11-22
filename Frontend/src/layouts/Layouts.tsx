@@ -1,8 +1,9 @@
-import { useRef } from "react";
+import { useEffect, useRef } from "react";
 import { Brand } from "@/components/Brand";
 import {
   Link,
   useMatch,
+  useNavigate,
   useLocation,
   NavLink,
   Outlet,
@@ -86,6 +87,18 @@ export function CourseLayout() {
   const { user } = useAuth();
   const location = useLocation();
   const enteredFromAdmin = useRef(location.state?.fromAdmin === true);
+  const navigate = useNavigate();
+  if (typeof location.state?.fromAdmin === "boolean") {
+    enteredFromAdmin.current = location.state.fromAdmin;
+  }
+  useEffect(() => {
+    if (enteredFromAdmin.current && location.state?.fromAdmin !== true) {
+      navigate(location.pathname + location.search, {
+        replace: true,
+        state: { ...location.state, fromAdmin: true },
+      });
+    }
+  }, [location.pathname, location.search, location.state, navigate]);
   const { courseId = "" } = useParams();
   const quizDetail = useMatch("/courses/:courseId/quizzes/:quizId");
   const assignmentDetail = useMatch(
@@ -121,7 +134,9 @@ export function CourseLayout() {
         ) : (
           <Link to="/courses">← My courses</Link>
         )}
-        <span className="pill">{result.data.role}</span>
+        <span className="pill">
+          {fromAdmin ? "Admin · read-only" : result.data.role}
+        </span>
       </div>
       <div className="course-heading">
         <h1>
@@ -129,11 +144,18 @@ export function CourseLayout() {
         </h1>
       </div>
       <CourseNav fromAdmin={fromAdmin} />
-      <Outlet context={result.data} />
+      {fromAdmin && (
+        <p className="notice">
+          Read-only administrator view. Use the course workspace as an
+          instructor to manage teaching content.
+        </p>
+      )}
+      <Outlet context={{ ...result.data, readOnly: fromAdmin }} />
     </>
   );
 }
-export const useCourse = () => useOutletContext<Course>();
+export const useCourse = () =>
+  useOutletContext<Course & { readOnly?: boolean }>();
 
 export function AdminLayout() {
   const { user, logout } = useAuth();
