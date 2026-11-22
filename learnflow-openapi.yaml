@@ -1972,6 +1972,60 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
+  /api/courses/{courseId}/assignments/{assignmentId}/submissions/{submissionId}/preview:
+    get:
+      x-implementation-status: implemented
+      tags:
+      - Assignments
+      operationId: get_api_courses_courseId_assignments_assignmentId_submissions_submissionId_preview
+      summary: Get assignment submission preview URL
+      description: Requires submission ownership or instructor/admin permission and course/assignment access. Returns
+        an inline application/pdf URL valid for 300 seconds as { url, expiresAt }. Students must be enrolled
+        in an active course and the assignment must be visible; administrators may preview archived courses.
+        Other students are forbidden. Missing or cross-course submissions return 404.
+      parameters:
+      - $ref: '#/components/parameters/courseId'
+      - $ref: '#/components/parameters/assignmentId'
+      - $ref: '#/components/parameters/submissionId'
+      security:
+      - sessionCookie: []
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PresignedUrl'
+        '400':
+          description: Invalid input
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
   /api/courses/{courseId}/assignments/{assignmentId}/submissions/{submissionId}/download:
     get:
       x-implementation-status: implemented
@@ -2014,12 +2068,6 @@ paths:
                 $ref: '#/components/schemas/Error'
         '404':
           description: Not found
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Error'
-        '409':
-          description: Archived course, passed deadline, disabled resubmission, or assignment with submissions
           content:
             application/json:
               schema:

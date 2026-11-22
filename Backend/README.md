@@ -18,7 +18,7 @@ that are not implemented yet.
 | User courses | Implemented: enrolled-course list, course detail, and role-aware dashboard |
 | Announcements | Implemented: course-scoped list, read, create, edit, delete, visibility, and cursor pagination |
 | Assignments | Implemented: list, detail, creation, updates, deletion, and instructor-controlled resubmission |
-| Assignment submissions | Implemented: PDF upload/replacement, latest submissions with student identities, marks, grade release, and authorized downloads |
+| Assignment submissions | Implemented: PDF upload/replacement, latest submissions with student identities, marks, grade release, and authorized preview/download URLs |
 | Quizzes and quiz grading | Implemented: settings, ordered questions, saved drafts, bounded attempts, automatic/manual question grading, result release, and instructor review |
 | Resources | Implemented: list, upload, detail, preview/download URLs, and deletion backed by S3 |
 | PDF extraction and search | Uploads enqueue jobs; API-managed runner and parsing thread framework exist; parser implementation and search endpoints remain TODO |
@@ -373,6 +373,9 @@ All paths below start with `/api/courses/:courseId/assignments`. Session authent
 | GET | `/:assignmentId/submissions` | Instructor/admin lists each student's latest submission with identity |
 | PATCH | `/:assignmentId/submissions/:submissionId` | Instructor/admin saves `{ "mark": 87.5 }`, or `{ "mark": null }` to clear grading |
 | GET | `/:assignmentId/submissions/:submissionId/download` | Owner or instructor/admin receives a download URL valid for 300 seconds |
+| GET | `/:assignmentId/submissions/:submissionId/preview` | Owner or instructor/admin receives an inline PDF preview URL valid for 300 seconds |
+
+Preview and download return `{ url, expiresAt }` for the current submission file. Preview uses inline `application/pdf` disposition; download uses attachment disposition. Both require submission ownership or instructor/admin permission plus course and assignment access. Other students receive 403; missing or cross-course submissions return 404. Administrators may preview archived courses. Students require an active course and visible assignment; instructors may preview hidden assignments in active courses.
 
 Creation accepts `title` (required, 1-200 trimmed characters), `description` (up to 20000 characters or null), `dueAt` (timestamp with timezone or null), `isVisible` (default false), and `allowResubmission` (default false). PATCH accepts those same fields without changing omitted values. Student uploads require a visible assignment, an active course, and a deadline that has not passed; null `dueAt` has no deadline. Assignments with submissions cannot be deleted (409), preserving student work; hide them instead. Writes to archived courses return 409 for administrators; ordinary users cannot access archived courses (403).
 
@@ -470,7 +473,3 @@ verified JWT/database sessions, administrator authorization, and message-only er
 includes strict validation, enrollment conflicts, archived
 course protection, history retention, cross-course foreign keys, SQL checks,
 full-text indexing, and concurrent last-admin protection.
-
-### Assignment PDF preview
-
-`GET /api/courses/:courseId/assignments/:assignmentId/submissions/:submissionId/preview` returns `{ url, expiresAt }` with an inline PDF disposition. It uses the same course, assignment visibility, and submission ownership checks as the existing `/download` endpoint. Submission owners and authorized instructors/administrators may preview; other students cannot. `/download` continues to return an attachment URL. No schema or extraction changes are involved.
