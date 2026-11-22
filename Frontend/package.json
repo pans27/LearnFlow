@@ -7,7 +7,7 @@
     "dev": "vite",
     "build": "tsc -b && vite build",
     "preview": "vite preview",
-    "test": "node scripts/check-mock.mjs && node scripts/check-auth.mjs && node scripts/check-admin.mjs",
+    "test": "node scripts/check-mock.mjs && node scripts/check-auth.mjs && node scripts/check-admin.mjs && node scripts/check-quizzes.mjs && node scripts/check-assignments.mjs",
     "format": "prettier --write src scripts *.json *.ts *.md index.html"
   },
   "dependencies": {

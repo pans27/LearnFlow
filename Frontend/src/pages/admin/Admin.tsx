@@ -515,6 +515,7 @@ function Courses({
                     <Link
                       className="admin-text-link"
                       to={`/courses/${course.id}`}
+                      state={{ fromAdmin: true }}
                     >
                       View course ↗
                     </Link>

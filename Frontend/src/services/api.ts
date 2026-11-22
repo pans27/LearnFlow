@@ -7,46 +7,17 @@ import type {
   Dashboard,
   Announcement,
 } from "@/types";
+import { liveQuizzes } from "./quizzes";
 import { mockApi } from "./mock";
-const base = import.meta.env.VITE_API_BASE_URL || "/api";
-export class ApiError extends Error {
-  constructor(
-    public status: number,
-    message: string,
-  ) {
-    super(message);
-  }
-}
-export async function request<T>(
-  path: string,
-  method = "GET",
-  body?: unknown,
-  onResponse?: (response: Response) => void,
-): Promise<T> {
-  const form = body instanceof FormData;
-  const response = await fetch(base + path, {
-    method,
-    credentials: "include",
-    headers: body && !form ? { "Content-Type": "application/json" } : undefined,
-    body: body === undefined ? undefined : form ? body : JSON.stringify(body),
-  });
-  if (!response.ok) {
-    const data = await response.json().catch(() => null);
-    throw new ApiError(
-      response.status,
-      data?.error?.message ??
-        data?.message ??
-        `Request failed (${response.status})`,
-    );
-  }
-  onResponse?.(response);
-  return response.status === 204 ? (undefined as T) : response.json();
-}
+import { request } from "./http";
+export { request, ApiError } from "./http";
 const c = (id: string) => `/courses/${encodeURIComponent(id)}`;
 type ApiResource = {
   id: number | string;
   title: string;
   resourceType: Resource["resourceType"];
+  ownerId?: number;
+  visibility?: "visible" | "hidden";
   createdAt?: string;
   extractionStatus: "pending" | "processing" | "completed" | "failed";
 };
@@ -54,6 +25,9 @@ function resourceFromApi(resource: ApiResource): Resource {
   return {
     id: String(resource.id),
     name: resource.title,
+    visibility: resource.visibility,
+    ownerId:
+      resource.ownerId === undefined ? undefined : String(resource.ownerId),
     createdAt: resource.createdAt,
     description: "",
     resourceType: resource.resourceType,
@@ -115,6 +89,12 @@ export function announcementFromApi(item: BackendAnnouncement): Announcement {
     author: "",
   };
 }
+export function deleteResource(courseId: string, resourceId: string) {
+  return request<void>(
+    c(courseId) + "/resources/" + encodeURIComponent(resourceId),
+    "DELETE",
+  );
+}
 export async function resourceFileUrl(
   courseId: string,
   resourceId: string,
@@ -149,6 +129,7 @@ export const httpApi: LearnFlowApi = {
         title: string;
         type: "assignment" | "quiz";
         dueAt: string;
+        submissionStatus?: string;
       }[];
       recentResources: (ApiResource & { description?: string })[];
     }>(c(id) + "/dashboard");
@@ -163,6 +144,7 @@ export const httpApi: LearnFlowApi = {
         id: String(item.id),
         kind: item.type,
         quizId: item.type === "quiz" ? String(item.id) : undefined,
+        assignmentId: item.type === "assignment" ? String(item.id) : undefined,
         description: "",
       })),
       recentResources: data.recentResources.map(resourceFromApi),
@@ -213,17 +195,11 @@ export const httpApi: LearnFlowApi = {
       c(id) + "/announcements/" + encodeURIComponent(announcementId),
       "DELETE",
     ),
-  quizzes: (id) => request(c(id) + "/quizzes"),
-  createQuiz: (id, input) => request(c(id) + "/quizzes", "POST", input),
-  draft: (id, q) => request(c(id) + `/quizzes/${encodeURIComponent(q)}/draft`),
-  saveDraft: (id, q, answers) =>
-    request(c(id) + `/quizzes/${encodeURIComponent(q)}/draft`, "PUT", {
-      answers,
-    }),
-  submit: (id, q, answers) =>
-    request(c(id) + `/quizzes/${encodeURIComponent(q)}/submissions`, "POST", {
-      answers,
-    }),
+  quizzes: liveQuizzes.list,
+  createQuiz: liveQuizzes.create,
+  draft: liveQuizzes.draft,
+  saveDraft: liveQuizzes.saveDraft,
+  submit: liveQuizzes.submit,
   resources: async (id) =>
     (await request<ApiResource[]>(c(id) + "/resources")).map(resourceFromApi),
   searchResources: async (id, query) => {
@@ -235,11 +211,12 @@ export const httpApi: LearnFlowApi = {
       matches,
     }));
   },
-  upload: async (id, { file, title, resourceType }) => {
+  upload: async (id, { file, title, resourceType, visibility }) => {
     const data = new FormData();
     data.append("file", file);
     data.append("title", title);
     data.append("resourceType", resourceType);
+    if (visibility) data.append("visibility", visibility);
     return resourceFromApi(
       await request<ApiResource>(c(id) + "/resources", "POST", data),
     );

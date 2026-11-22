@@ -1,3 +1,4 @@
+import Assignments from "@/pages/Assignments";
 import { Eye, EyeOff } from "lucide-react";
 import Admin from "@/pages/admin/Admin";
 import { Brand } from "@/components/Brand";
@@ -328,6 +329,11 @@ export default function App() {
               <Route path="quizzes" element={<Quizzes />} />
               <Route path="quizzes/:quizId" element={<Quizzes />} />
               <Route path="resources" element={<Resources />} />
+              <Route path="assignments" element={<Assignments />} />
+              <Route
+                path="assignments/:assignmentId"
+                element={<Assignments />}
+              />
             </Route>
           </Route>
           <Route element={<AdminLayout />}>

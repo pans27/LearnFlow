@@ -80,3 +80,8 @@ export const grade: RequestHandler = handleRequest(async (_req, res) => {
 export const download: RequestHandler = handleRequest(async (_req, res) => {
   res.json(await service.download(requireId(res, 'courseId'), requireId(res, 'assignmentId'), requireId(res, 'submissionId'), requireUser(res)));
 });
+
+// Reuse submission download authorization while signing an inline PDF URL.
+export const preview: RequestHandler = handleRequest(async (_req, res) => {
+  res.json(await service.download(requireId(res, 'courseId'), requireId(res, 'assignmentId'), requireId(res, 'submissionId'), requireUser(res), false));
+});

@@ -137,7 +137,7 @@ export const assignmentService = {
   },
 
   // Sign a download URL for a submission owner or authorized course manager.
-  async download(courseId: number, id: number, submissionId: number, user: CurrentUser) {
+  async download(courseId: number, id: number, submissionId: number, user: CurrentUser, download = true) {
     const item = await courseDb.read(async (tx) => {
       const { course } = await accessibleAssignment(tx, courseId, id, user);
       const item = await database.submission(tx, courseId, id, submissionId);
@@ -145,6 +145,6 @@ export const assignmentService = {
       if (!user.isAdmin && course.role !== 'instructor' && item.studentId !== user.id) throw new HttpError(403, 'Forbidden');
       return item;
     });
-    return signedGetUrl(item.s3Key, item.originalFilename, true);
+    return signedGetUrl(item.s3Key, item.originalFilename, download);
   },
 };
