@@ -95,7 +95,12 @@ export function Courses() {
       ) : (
         <div className="course-grid">
           {r.data.map((c, i) => (
-            <Link className="course-card" key={c.id} to={`/courses/${c.id}`}>
+            <Link
+              className="course-card"
+              state={{ fromAdmin: false }}
+              key={c.id}
+              to={`/courses/${c.id}`}
+            >
               <div className={"course-cover cover-" + i}>
                 <BookOpen size={38} />
                 <ArrowUpRight size={24} />
@@ -256,7 +261,9 @@ export function Quizzes() {
         <div>
           <h1>Quizzes</h1>
         </div>
-        {manage && c.status === "active" && <CreateQuiz onCreated={r.reload} />}
+        {manage && !c.readOnly && c.status === "active" && (
+          <CreateQuiz onCreated={r.reload} />
+        )}
       </div>
       {c.status === "archived" && (
         <p className="notice">Archived course. Quizzes are read-only.</p>
@@ -314,7 +321,7 @@ export function Quizzes() {
               <ArrowUpRight />
             )}
           </Link>
-          {!isMock && manage && c.status === "active" && (
+          {!isMock && manage && !c.readOnly && c.status === "active" && (
             <Button
               type="button"
               variant="outline"
@@ -903,7 +910,7 @@ function QuizDraftReview({
     <section className="quiz-workspace">
       <div className="announcement-toolbar course-page-header">
         <h1>{quiz.title}</h1>
-        {course.status === "active" && (
+        {!course.readOnly && course.status === "active" && (
           <div className="actions">
             <CreateQuiz initialQuiz={quiz} onCreated={onChanged} />
             <Button
@@ -976,42 +983,46 @@ function PublishedQuizReview({
               : "Grades are released when you publish them."
         }
       />
-      {(isMock ? quiz.releaseGrades !== "automatic" : !quiz.showResults) && (
-        <div className="mb-4">
-          <Button
-            disabled={
-              !hasUnpublished || publishing || course.status !== "active"
-            }
-            onClick={async () => {
-              setPublishing(true);
-              try {
-                if (isMock) demoQuizReview.publish(course.id, quiz.id);
-                else await liveQuizzes.publish(course.id, quiz);
-                setPublished(true);
-                setPublishFailed(false);
-                setPublishMessage("Grades published.");
-                records.reload();
-              } catch (error) {
-                setPublishFailed(true);
-                setPublishMessage((error as Error).message);
-              } finally {
-                setPublishing(false);
+      {!course.readOnly &&
+        (isMock ? quiz.releaseGrades !== "automatic" : !quiz.showResults) && (
+          <div className="mb-4">
+            <Button
+              disabled={
+                !hasUnpublished ||
+                publishing ||
+                course.readOnly ||
+                course.status !== "active"
               }
-            }}
-          >
-            {publishing
-              ? "Publishing…"
-              : records.data?.length && !hasUnpublished
-                ? "Grades published"
-                : "Publish grades"}
-          </Button>
-          {publishMessage && (
-            <CourseFeedback tone={publishFailed ? "error" : "success"}>
-              {publishMessage}
-            </CourseFeedback>
-          )}
-        </div>
-      )}
+              onClick={async () => {
+                setPublishing(true);
+                try {
+                  if (isMock) demoQuizReview.publish(course.id, quiz.id);
+                  else await liveQuizzes.publish(course.id, quiz);
+                  setPublished(true);
+                  setPublishFailed(false);
+                  setPublishMessage("Grades published.");
+                  records.reload();
+                } catch (error) {
+                  setPublishFailed(true);
+                  setPublishMessage((error as Error).message);
+                } finally {
+                  setPublishing(false);
+                }
+              }}
+            >
+              {publishing
+                ? "Publishing…"
+                : records.data?.length && !hasUnpublished
+                  ? "Grades published"
+                  : "Publish grades"}
+            </Button>
+            {publishMessage && (
+              <CourseFeedback tone={publishFailed ? "error" : "success"}>
+                {publishMessage}
+              </CourseFeedback>
+            )}
+          </div>
+        )}
       {!isMock && <QuizPreview quiz={quiz} />}
       <h2>Student submissions {records.data && `(${records.data.length})`}</h2>
       {!records.data ? (
@@ -1054,7 +1065,8 @@ function SubmissionReview({
     shortAnswers.length === 0 ||
     shortAnswers.some((question) => record.marks[question.id] !== undefined);
   const [editing, setEditing] = useState(!hasSavedMarks && !record.published);
-  const canEdit = !record.published && course.status === "active";
+  const canEdit =
+    !record.published && !course.readOnly && course.status === "active";
   const [saving, setSaving] = useState(false);
   async function save(data: FormData) {
     if (saving || !editing || !canEdit) return;
@@ -1116,7 +1128,9 @@ function SubmissionReview({
                     max={question.points ?? 1}
                     step="any"
                     defaultValue={record.marks[question.id]}
-                    disabled={saving || course.status !== "active"}
+                    disabled={
+                      saving || course.readOnly || course.status !== "active"
+                    }
                   />
                 </label>
               ) : (
@@ -1201,6 +1215,7 @@ function LiveQuizTaking({ quiz }: { quiz: Quiz }) {
   const draft = result.data.find((row) => row.attemptState === "draft");
   const max = quiz.maxAttempts ?? 1;
   const open =
+    !course.readOnly &&
     course.status === "active" &&
     quiz.status === "published" &&
     (!quiz.opensAt || Date.parse(quiz.opensAt) <= Date.now()) &&
@@ -1281,6 +1296,7 @@ function MockQuizTaking({ quiz }: { quiz: Quiz }) {
   if (r.data.submission)
     return <QuizResult quiz={quiz} submission={r.data.submission} />;
   if (
+    c.readOnly ||
     c.status !== "active" ||
     quiz.status === "closed" ||
     (quiz.opensAt && Date.parse(quiz.opensAt) > Date.now()) ||
@@ -1475,7 +1491,9 @@ function CourseResources() {
   const c = useCourse();
   const { user } = useAuth();
   const canUpload =
-    c.status === "active" && (c.role !== null || user?.systemRole === "admin");
+    !c.readOnly &&
+    c.status === "active" &&
+    (c.role !== null || user?.systemRole === "admin");
   const [fileBusy, setFileBusy] = useState<string | null>(null);
   const [query, setQuery] = useState("");
   const searchInput = useRef<HTMLInputElement>(null);
@@ -1528,19 +1546,21 @@ function CourseResources() {
     <>
       <div className="announcement-toolbar course-page-header">
         <h1>Resources</h1>
-        <Button
-          type="button"
-          aria-haspopup="dialog"
-          disabled={!canUpload}
-          onClick={() => {
-            setMessage("");
-            setMessageTone("info");
-            setUploadError("");
-            uploadDialog.current?.showModal();
-          }}
-        >
-          Upload resource
-        </Button>
+        {!c.readOnly && (
+          <Button
+            type="button"
+            aria-haspopup="dialog"
+            disabled={!canUpload}
+            onClick={() => {
+              setMessage("");
+              setMessageTone("info");
+              setUploadError("");
+              uploadDialog.current?.showModal();
+            }}
+          >
+            Upload resource
+          </Button>
+        )}
       </div>
       <form
         className="resource-toolbar"
@@ -1810,7 +1830,8 @@ function CourseResources() {
                             : "Download"}
                       </Button>
                     ))}
-                    {c.status === "active" &&
+                    {!c.readOnly &&
+                      c.status === "active" &&
                       (c.role === "instructor" ||
                         user?.systemRole === "admin" ||
                         resource.ownerId === user?.id) && (

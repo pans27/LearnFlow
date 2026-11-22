@@ -148,7 +148,7 @@ function LiveAssignments() {
     <section className="assignment-workspace">
       <div className="announcement-toolbar course-page-header">
         <h1>{assignmentId ? selected.title : "Assignments"}</h1>
-        {manage && course.status === "active" && (
+        {manage && !course.readOnly && course.status === "active" && (
           <div className="actions assignment-heading-actions">
             {(!assignmentId || !selected.isVisible) && (
               <>
@@ -261,7 +261,7 @@ function LiveAssignments() {
                 <ArrowUpRight />
               )}
             </Link>
-            {manage && course.status === "active" && (
+            {manage && !course.readOnly && course.status === "active" && (
               <Button
                 type="button"
                 variant="outline"
@@ -511,6 +511,7 @@ function StudentAssignment({
   const pastDue =
     assignment.dueAt !== null && Date.parse(assignment.dueAt) <= Date.now();
   const canUpload =
+    !course.readOnly &&
     course.status === "active" &&
     !pastDue &&
     (!submission || assignment.allowResubmission);
@@ -561,6 +562,7 @@ function StudentAssignment({
         {submission &&
           !assignment.allowResubmission &&
           !pastDue &&
+          !course.readOnly &&
           course.status === "active" && (
             <p className="assignment-upload">
               Your instructor has not enabled resubmission.
@@ -679,32 +681,35 @@ function InstructorAssignment({
     <>
       <div className="announcement-toolbar">
         <h2>Student submissions {rows.data && `(${rows.data.length})`}</h2>
-        <Button
-          disabled={
-            busy ||
-            course.status !== "active" ||
-            assignment.gradesVisible ||
-            !rows.data?.length
-          }
-          onClick={async () => {
-            setBusy(true);
-            setError("");
-            try {
-              await api.publish(course.id, assignment);
-              reload();
-            } catch (e) {
-              setError((e as Error).message);
-            } finally {
-              setBusy(false);
+        {!course.readOnly && (
+          <Button
+            disabled={
+              busy ||
+              course.readOnly ||
+              course.status !== "active" ||
+              assignment.gradesVisible ||
+              !rows.data?.length
             }
-          }}
-        >
-          {assignment.gradesVisible
-            ? "Grades published"
-            : busy
-              ? "Publishing…"
-              : "Publish grades"}
-        </Button>
+            onClick={async () => {
+              setBusy(true);
+              setError("");
+              try {
+                await api.publish(course.id, assignment);
+                reload();
+              } catch (e) {
+                setError((e as Error).message);
+              } finally {
+                setBusy(false);
+              }
+            }}
+          >
+            {assignment.gradesVisible
+              ? "Grades published"
+              : busy
+                ? "Publishing…"
+                : "Publish grades"}
+          </Button>
+        )}
       </div>
       {error && <CourseFeedback>{error}</CourseFeedback>}
       {!rows.data ? (
@@ -737,7 +742,8 @@ function AssignmentGrading({
   const [editing, setEditing] = useState(submission.mark === null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
-  const writable = course.status === "active" && !assignment.gradesVisible;
+  const writable =
+    !course.readOnly && course.status === "active" && !assignment.gradesVisible;
   return (
     <details className="panel quiz-submission">
       <summary>
