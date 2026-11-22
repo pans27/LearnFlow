@@ -1,7 +1,15 @@
 import { useEffect, useState } from "react";
 import { Clock } from "lucide-react";
 import { getDueStatus } from "@/lib/due";
-export function DueDate({ dueAt }: { dueAt: string }) {
+export function DueDate({
+  dueAt,
+  completed = false,
+  showStatus = false,
+}: {
+  dueAt: string;
+  completed?: boolean;
+  showStatus?: boolean;
+}) {
   const [now, setNow] = useState(Date.now);
   useEffect(() => {
     const id = window.setInterval(() => setNow(Date.now()), 30000);
@@ -15,7 +23,7 @@ export function DueDate({ dueAt }: { dueAt: string }) {
   const { tone, label } = getDueStatus(dueAt, now);
   const valid = Number.isFinite(Date.parse(dueAt));
   return (
-    <div className={`due-date due-${tone}`}>
+    <div className={`due-date due-${completed ? "completed" : tone}`}>
       <span className="due-date-value">
         <Clock size={16} aria-hidden="true" />
         {valid ? (
@@ -34,7 +42,9 @@ export function DueDate({ dueAt }: { dueAt: string }) {
           label
         )}
       </span>
-      {valid && <span className="due-status">{label}</span>}
+      {valid && showStatus && !completed && (
+        <span className="due-status">{label}</span>
+      )}
     </div>
   );
 }

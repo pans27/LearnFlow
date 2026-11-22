@@ -62,6 +62,35 @@ try {
     upcomingAssessments: [],
     recentResources: [],
   });
+  response = Response.json({
+    recentAnnouncements: [],
+    recentResources: [],
+    upcomingAssessments: [
+      {
+        id: 10,
+        title: "Submitted quiz",
+        type: "quiz",
+        dueAt: "2026-12-01T20:00:00Z",
+        submissionStatus: "graded",
+      },
+      {
+        id: 11,
+        title: "Pending assignment",
+        type: "assignment",
+        dueAt: "2026-12-01T20:00:00Z",
+        submissionStatus: "not_started",
+      },
+    ],
+  });
+  const dashboardStates = await httpApi.dashboard("12");
+  assert.equal(
+    dashboardStates.upcomingAssessments[0].submissionStatus,
+    "graded",
+  );
+  assert.equal(
+    dashboardStates.upcomingAssessments[1].submissionStatus,
+    "not_started",
+  );
   const announcement = {
     id: 31,
     courseId: 12,
@@ -172,6 +201,16 @@ try {
   await assert.rejects(
     resourceFileUrl("12", "42", "download"),
     (e) => e.status === 403,
+  );
+  const { deleteResource } = await server.ssrLoadModule("/src/services/api.ts");
+  response = new Response(null, { status: 204 });
+  await deleteResource("12", "42");
+  assert.equal(calls.at(-1).options.method, "DELETE");
+  assert.ok(calls.at(-1).url.endsWith("/courses/12/resources/42"));
+  response = Response.json({ message: "Forbidden" }, { status: 403 });
+  await assert.rejects(
+    deleteResource("12", "42"),
+    (error) => error.status === 403,
   );
   console.log(
     "PASS: resource upload multipart payload, numeric IDs, PDF validation, preview/download links and authorization errors.",

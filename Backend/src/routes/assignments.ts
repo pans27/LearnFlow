@@ -14,6 +14,7 @@ router.get('/:assignmentId/submissions', validateIds, controller.submissions);
 router.post('/:assignmentId/submissions', validateIds, controller.upload);
 router.get('/:assignmentId/submissions/me', validateIds, controller.own);
 router.patch('/:assignmentId/submissions/:submissionId', validateIds, validateBody(assignmentGradeBody, 'assignmentGrade'), controller.grade);
+router.get('/:assignmentId/submissions/:submissionId/preview', validateIds, controller.preview);
 router.get('/:assignmentId/submissions/:submissionId/download', validateIds, controller.download);
 
 export default router;

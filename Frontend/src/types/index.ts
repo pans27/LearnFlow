@@ -24,6 +24,7 @@ export interface Announcement {
 }
 export type QuestionKind = "single_choice" | "multiple_choice" | "short_answer";
 export interface Question {
+  correctOptions?: string[];
   id: string;
   prompt: string;
   options: string[];
@@ -32,6 +33,11 @@ export interface Question {
 }
 export type QuizQuestionInput = Question & { correctOptions?: string[] };
 export interface Quiz {
+  isVisible?: boolean;
+  maxAttempts?: number;
+  status?: "draft" | "published" | "closed";
+  opensAt?: string | null;
+  showResults?: boolean;
   id: string;
   title: string;
   dueAt: string;
@@ -41,6 +47,7 @@ export interface Quiz {
 export type ResourceType =
   "instructor_material" | "student_note" | "assignment_file";
 export interface ResourceUpload {
+  visibility?: "visible" | "hidden";
   file: File;
   title: string;
   resourceType: Exclude<ResourceType, "assignment_file">;
@@ -50,6 +57,8 @@ export interface ResourceMatch {
   matches: { page: number; snippet: string }[];
 }
 export interface Resource {
+  visibility?: "visible" | "hidden";
+  ownerId?: string;
   id: string;
   name: string;
   description: string;
@@ -67,6 +76,8 @@ export interface Submission {
   score?: { earned: number; possible: number; manualPending: number };
 }
 export interface QuizSubmissionRecord extends Submission {
+  attemptNumber?: number;
+  attemptState?: string;
   studentId: string;
   studentName: string;
   answers: Answers;
@@ -74,11 +85,13 @@ export interface QuizSubmissionRecord extends Submission {
   published: boolean;
 }
 export interface Assessment {
+  submissionStatus?: string;
   id: string;
   title: string;
   kind: "assignment" | "quiz" | "exam";
   dueAt: string;
   quizId?: string;
+  assignmentId?: string;
   description: string;
 }
 export interface Dashboard {

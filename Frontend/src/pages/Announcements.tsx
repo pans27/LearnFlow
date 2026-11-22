@@ -1,3 +1,5 @@
+import { confirmCourseAction } from "@/lib/course-confirm";
+import { CourseFeedback, VisibilityBadge } from "@/components/CourseFeedback";
 import { useRef, useState } from "react";
 import { Link, useParams, useNavigate } from "react-router-dom";
 import { useAuth } from "@/App";
@@ -49,19 +51,21 @@ export default function Announcements() {
   }
   return (
     <>
-      <div className="announcement-toolbar">
+      <div className="announcement-toolbar course-page-header">
         <h1>Announcements</h1>
         {canWrite && (
           <Button onClick={() => open(null)}>Create announcement</Button>
         )}
       </div>
       {course.status === "archived" && (
-        <p>This course is archived. Announcements are read-only.</p>
+        <CourseFeedback tone="info">
+          This course is archived. Announcements are read-only.
+        </CourseFeedback>
       )}
-      {error && <p role="alert">{error}</p>}
+      {error && <CourseFeedback>{error}</CourseFeedback>}
       {result.error ? (
-        <div className="panel" role="alert">
-          <p>{result.error}</p>
+        <div className="course-load-state">
+          <CourseFeedback>{result.error}</CourseFeedback>
           <Button onClick={result.reload}>Try again</Button>
         </div>
       ) : !items ? (
@@ -73,25 +77,21 @@ export default function Announcements() {
       ) : (
         items.map((item) => (
           <article className="panel announcement" key={item.id}>
-            <div className="announcement-toolbar">
+            <div className="announcement-heading">
               <h2>
                 <Link to={`/courses/${course.id}/announcements/${item.id}`}>
                   {item.title}
                 </Link>
               </h2>
               {canManage && (
-                <span className="eyebrow">
-                  {item.isVisible === false
-                    ? "Hidden from students"
-                    : "Visible to students"}
-                </span>
+                <VisibilityBadge visible={item.isVisible !== false} />
               )}
             </div>
             <p style={{ whiteSpace: "pre-wrap", overflowWrap: "anywhere" }}>
               {item.body}
             </p>
             {canWrite && (
-              <div className="announcement-actions">
+              <div className="announcement-actions course-card-actions">
                 <Button
                   variant="outline"
                   disabled={busy}
@@ -111,15 +111,16 @@ export default function Announcements() {
                   }
                 >
                   {item.isVisible === false
-                    ? "Show to students"
-                    : "Hide from students"}
+                    ? "Publish announcement"
+                    : "Hide announcement"}
                 </Button>
                 <Button
                   variant="outline"
+                  className="delete-action"
                   disabled={busy}
-                  onClick={() => {
+                  onClick={async () => {
                     if (
-                      window.confirm(
+                      await confirmCourseAction(
                         `Delete “${item.title}”? This cannot be undone.`,
                       )
                     )
@@ -152,6 +153,7 @@ export default function Announcements() {
       >
         <form
           className="stack"
+          noValidate
           onSubmit={async (event) => {
             event.preventDefault();
             if (!title.trim() || !body.trim()) {
@@ -221,7 +223,7 @@ export default function Announcements() {
               </small>
             </span>
           </label>
-          {formError && <p role="alert">{formError}</p>}
+          {formError && <CourseFeedback>{formError}</CourseFeedback>}
           <div className="announcement-actions">
             <Button disabled={busy}>
               {busy

@@ -149,6 +149,20 @@ test('assignment lifecycle and latest student submissions', { skip: !process.env
       assert.ok(new URL(download.data.url).pathname.endsWith(latest.s3Key));
     }
     assert.equal((await request(`/${other.id}/assignments/${assignmentId}/submissions/${submissionId}/download`, admin.cookie)).status, 404);
+    const previewPath = `${path}/${assignmentId}/submissions/${submissionId}/preview`;
+    assert.equal((await request(previewPath)).status, 401);
+    assert.equal((await request(previewPath, peer.cookie)).status, 403);
+    assert.equal((await request(previewPath, outsider.cookie)).status, 403);
+    assert.equal((await request(`/${other.id}/assignments/${assignmentId}/submissions/${submissionId}/preview`, admin.cookie)).status, 404);
+    for (const user of [student, instructor, admin]) {
+      const preview = await request(previewPath, user.cookie);
+      assert.equal(preview.status, 200);
+      const url = new URL(preview.data.url);
+      assert.ok(url.pathname.endsWith(latest.s3Key));
+      assert.ok(url.searchParams.get('response-content-disposition')?.startsWith('inline'));
+      const download = await request(`${path}/${assignmentId}/submissions/${submissionId}/download`, user.cookie);
+      assert.ok(new URL(download.data.url).searchParams.get('response-content-disposition')?.startsWith('attachment'));
+    }
   });
   await t.test('instructor marks stay private until released and resubmission clears previous grading', async () => {
     const submission = `${path}/${assignmentId}/submissions/${submissionId}`;

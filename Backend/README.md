@@ -470,3 +470,7 @@ verified JWT/database sessions, administrator authorization, and message-only er
 includes strict validation, enrollment conflicts, archived
 course protection, history retention, cross-course foreign keys, SQL checks,
 full-text indexing, and concurrent last-admin protection.
+
+### Assignment PDF preview
+
+`GET /api/courses/:courseId/assignments/:assignmentId/submissions/:submissionId/preview` returns `{ url, expiresAt }` with an inline PDF disposition. It uses the same course, assignment visibility, and submission ownership checks as the existing `/download` endpoint. Submission owners and authorized instructors/administrators may preview; other students cannot. `/download` continues to return an attachment URL. No schema or extraction changes are involved.

@@ -1,7 +1,9 @@
+import { useRef } from "react";
 import { Brand } from "@/components/Brand";
 import {
   Link,
   useMatch,
+  useLocation,
   NavLink,
   Outlet,
   useParams,
@@ -11,6 +13,7 @@ import {
   LayoutDashboard,
   Megaphone,
   ClipboardList,
+  FileText,
   FolderOpen,
   LogOut,
 } from "lucide-react";
@@ -51,7 +54,7 @@ export function Shell() {
   );
 }
 
-function CourseNav() {
+function CourseNav({ fromAdmin = false }: { fromAdmin?: boolean }) {
   const { courseId } = useParams();
   if (!courseId) return null;
   return (
@@ -60,6 +63,7 @@ function CourseNav() {
         ["", "Overview", LayoutDashboard],
         ["announcements", "Announcements", Megaphone],
         ["quizzes", "Quizzes", ClipboardList],
+        ["assignments", "Assignments", FileText],
         ["resources", "Resources", FolderOpen],
       ].map(([path, label, Icon]) => {
         const I = Icon as typeof LayoutDashboard;
@@ -67,6 +71,7 @@ function CourseNav() {
           <NavLink
             key={String(path)}
             end
+            state={fromAdmin ? { fromAdmin: true } : undefined}
             to={`/courses/${courseId}${path ? "/" + path : ""}`}
           >
             <I size={18} />
@@ -78,17 +83,41 @@ function CourseNav() {
   );
 }
 export function CourseLayout() {
+  const { user } = useAuth();
+  const location = useLocation();
+  const enteredFromAdmin = useRef(location.state?.fromAdmin === true);
   const { courseId = "" } = useParams();
   const quizDetail = useMatch("/courses/:courseId/quizzes/:quizId");
+  const assignmentDetail = useMatch(
+    "/courses/:courseId/assignments/:assignmentId",
+  );
   const result = useData(() => api.course(courseId), [courseId]);
   if (!result.data) return <State {...result} />;
+  const fromAdmin =
+    user?.systemRole === "admin" &&
+    (enteredFromAdmin.current ||
+      location.state?.fromAdmin === true ||
+      result.data.role === null);
+  const backState = fromAdmin ? { fromAdmin: true } : undefined;
   return (
     <>
       <div className="course-breadcrumb">
         {quizDetail ? (
-          <Link to={`/courses/${encodeURIComponent(courseId)}/quizzes`}>
+          <Link
+            to={`/courses/${encodeURIComponent(courseId)}/quizzes`}
+            state={backState}
+          >
             ← Quizzes
           </Link>
+        ) : assignmentDetail ? (
+          <Link
+            to={`/courses/${encodeURIComponent(courseId)}/assignments`}
+            state={backState}
+          >
+            ← Assignments
+          </Link>
+        ) : fromAdmin ? (
+          <Link to="/admin?tab=courses">← Back to administration</Link>
         ) : (
           <Link to="/courses">← My courses</Link>
         )}
@@ -99,7 +128,7 @@ export function CourseLayout() {
           {result.data.code} · {result.data.name}
         </h1>
       </div>
-      <CourseNav />
+      <CourseNav fromAdmin={fromAdmin} />
       <Outlet context={result.data} />
     </>
   );

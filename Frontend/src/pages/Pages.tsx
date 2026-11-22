@@ -1,3 +1,7 @@
+import { QuizPreview } from "@/components/QuizPreview";
+import { confirmCourseAction } from "@/lib/course-confirm";
+import { CourseFeedback, VisibilityBadge } from "@/components/CourseFeedback";
+import { readQuestionMarks } from "@/lib/quiz-grading";
 import {
   studentResourceAccept,
   validateResourceFile,
@@ -15,8 +19,9 @@ import {
   Search,
   X,
 } from "lucide-react";
-import { api, isMock, resourceFileUrl } from "@/services/api";
+import { api, isMock, resourceFileUrl, deleteResource } from "@/services/api";
 import { useAuth } from "@/App";
+import { liveQuizzes } from "@/services/quizzes";
 import { demoQuizReview } from "@/services/mock";
 import { useData } from "@/lib/use-data";
 import { useCourse } from "@/layouts/Layouts";
@@ -28,6 +33,7 @@ import type {
   Quiz,
   QuizQuestionInput,
   QuizSubmissionRecord,
+  Submission,
 } from "@/types";
 const date = (s: string) =>
   new Date(s).toLocaleDateString("en-CA", { month: "short", day: "numeric" });
@@ -38,18 +44,17 @@ export function State({
   error: string;
   reload: () => void;
 }) {
-  return (
-    <div className="panel" role={error ? "alert" : "status"}>
-      {error ? (
-        <>
-          <h2>Something needs attention</h2>
-          <p>{error}</p>
-          <Button onClick={reload}>Try again</Button>
-        </>
-      ) : (
-        "Loading your workspace…"
-      )}
+  return error ? (
+    <div className="course-load-state">
+      <CourseFeedback>{error}</CourseFeedback>
+      <Button variant="outline" onClick={reload}>
+        Try again
+      </Button>
     </div>
+  ) : (
+    <p role="status" className="course-loading">
+      Loading…
+    </p>
   );
 }
 function Title({
@@ -131,27 +136,13 @@ function CourseDashboard() {
   );
   return (
     <>
-      {c.role === "instructor" && (
-        <nav className="instructor-actions" aria-label="Instructor tools">
-          <Button asChild>
-            <Link to="announcements">Publish announcement</Link>
-          </Button>
-          <Button asChild variant="outline">
-            <Link to="quizzes">Create quiz</Link>
-          </Button>
-          <Button asChild variant="outline">
-            <Link to="resources">Upload resource</Link>
-          </Button>
-        </nav>
-      )}
       <div className="dashboard-grid course-overview">
         <section className="panel recent-announcements">
           <h2>Recent announcements</h2>
-          <p className="list-summary">Latest course updates</p>
           {latest.length === 0 && <p>No announcements yet.</p>}
           {latest.map((a) => (
             <article className="list-row full-announcement" key={a.id}>
-              <span className="eyebrow">{a.author}</span>
+              {a.author && <span className="eyebrow">{a.author}</span>}
               <h3>{a.title}</h3>
               <p>{a.body}</p>
             </article>
@@ -162,27 +153,54 @@ function CourseDashboard() {
         </section>
         <section className="panel upcoming-assessments">
           <h2>Upcoming & past due</h2>
-          <p className="assessment-intro">Assignments, quizzes & exams</p>
           {upcoming.length === 0 && <p>No assessments scheduled.</p>}
-          <p className="list-summary" aria-live="polite">
-            Showing{" "}
-            {showAllUpcoming ? upcoming.length : Math.min(4, upcoming.length)}{" "}
-            of {upcoming.length} assessments
-          </p>
           <div id="upcoming-list">
             {(showAllUpcoming ? upcoming : upcoming.slice(0, 4)).map((a) => (
-              <article className="assessment-item" key={a.id}>
-                <span className={"pill assessment-kind kind-" + a.kind}>
-                  {a.kind}
-                </span>
-                <h3>{a.title}</h3>
-                <DueDate dueAt={a.dueAt} />
-                <p>{a.description}</p>
-                {a.kind === "quiz" && a.quizId && (
-                  <Link className="text-link" to={"quizzes/" + a.quizId}>
-                    Open quiz →
-                  </Link>
-                )}
+              <article
+                className="assessment-item assessment-compact"
+                key={a.kind + a.id}
+              >
+                <div className="assessment-content">
+                  <h3>{a.title}</h3>
+                  <DueDate
+                    dueAt={a.dueAt}
+                    completed={
+                      c.role === "student" &&
+                      ["submitted", "graded"].includes(a.submissionStatus ?? "")
+                    }
+                    showStatus={false}
+                  />
+                  {c.role === "student" && a.submissionStatus && (
+                    <span
+                      className={`quiz-completion ${["submitted", "graded"].includes(a.submissionStatus) ? "quiz-completed" : "quiz-incomplete"}`}
+                    >
+                      {["submitted", "graded"].includes(a.submissionStatus)
+                        ? "Submitted"
+                        : "Not submitted"}
+                    </span>
+                  )}
+                </div>
+                <div className="assessment-trailing">
+                  <span className={"pill assessment-kind kind-" + a.kind}>
+                    {a.kind === "assignment"
+                      ? "Assignment"
+                      : a.kind === "quiz"
+                        ? "Quiz"
+                        : "Exam"}
+                  </span>
+                  {(a.quizId || a.assignmentId || a.kind === "assignment") && (
+                    <Link
+                      className="assessment-open"
+                      aria-label={`Open ${a.kind}: ${a.title}`}
+                      to={
+                        (a.kind === "quiz" ? "quizzes/" : "assignments/") +
+                        (a.quizId || a.assignmentId || "")
+                      }
+                    >
+                      <ArrowRight size={19} aria-hidden="true" />
+                    </Link>
+                  )}
+                </div>
               </article>
             ))}
           </div>
@@ -208,46 +226,124 @@ export { default as Announcements } from "./Announcements";
 export function Quizzes() {
   const c = useCourse();
   const { quizId } = useParams();
-  const r = useData(() => api.quizzes(c.id), [c.id]);
+  const { user } = useAuth();
+  const [deleting, setDeleting] = useState<string | null>(null);
+  const [deleteError, setDeleteError] = useState("");
+  const manage = c.role === "instructor" || user?.systemRole === "admin";
+  const r = useData(async () => {
+    const quizzes = await api.quizzes(c.id);
+    return Promise.all(
+      quizzes.map(async (quiz) => ({
+        ...quiz,
+        ownSubmission:
+          !manage && !isMock ? await liveQuizzes.mine(c.id, quiz) : null,
+      })),
+    );
+  }, [c.id, manage, quizId, user?.id]);
   if (!r.data) return <State {...r} />;
   if (quizId) {
     const q = r.data.find((x) => x.id === quizId);
     if (!q) return <NotFound />;
-    return isMock && c.role === "instructor" ? (
-      <QuizReview key={c.id + q.id} quiz={q} />
+    return manage ? (
+      <QuizReview key={c.id + q.id} quiz={q} onChanged={r.reload} />
     ) : (
       <QuizTaking key={c.id + q.id} quiz={q} />
     );
   }
   return (
     <>
-      <Title
-        over=""
-        title="Quizzes"
-        description="Check your understanding and make your next step count."
-      />
-      {c.role === "instructor" && <CreateQuiz onCreated={r.reload} />}
+      <div className="announcement-toolbar course-page-header quiz-page-heading">
+        <div>
+          <h1>Quizzes</h1>
+        </div>
+        {manage && c.status === "active" && <CreateQuiz onCreated={r.reload} />}
+      </div>
+      {c.status === "archived" && (
+        <p className="notice">Archived course. Quizzes are read-only.</p>
+      )}
       {r.data.length === 0 && <p className="panel">No quizzes available.</p>}
+      {deleteError && <CourseFeedback>{deleteError}</CourseFeedback>}
       {r.data.map((q) => (
-        <Link className="panel quiz-card" key={q.id} to={q.id}>
-          <div>
-            <span className="eyebrow">KNOWLEDGE CHECK</span>
-            <h2>{q.title}</h2>
-            <p>{q.questions.length} questions</p>
-            <DueDate dueAt={q.dueAt} />
-          </div>
-          {isMock && c.role === "student" ? (
-            <span className="quiz-list-grade" aria-label="Grade">
-              {demoQuizReview.mine(c.id, q)?.score?.earned ?? "—"} /{" "}
-              {q.questions.reduce(
-                (sum, question) => sum + (question.points ?? 1),
-                0,
+        <div className="panel quiz-card" key={q.id}>
+          <Link className="quiz-card-content" to={q.id}>
+            <div>
+              <h2>{q.title}</h2>
+              {manage && !isMock && (
+                <VisibilityBadge
+                  visible={q.isVisible !== false && q.status !== "draft"}
+                  draft={q.status === "draft"}
+                />
               )}
-            </span>
-          ) : (
-            <ArrowUpRight />
+              <div className="quiz-card-meta">
+                <p>
+                  {q.questions.length}{" "}
+                  {q.questions.length === 1 ? "question" : "questions"}
+                </p>
+                {!manage && (
+                  <span
+                    className={`quiz-completion ${(isMock ? demoQuizReview.mine(c.id, q) : q.ownSubmission) ? "quiz-completed" : "quiz-incomplete"}`}
+                  >
+                    {(isMock ? demoQuizReview.mine(c.id, q) : q.ownSubmission)
+                      ? "Submitted"
+                      : "Not submitted"}
+                  </span>
+                )}
+              </div>
+              <DueDate
+                dueAt={q.dueAt}
+                showStatus={false}
+                completed={
+                  !manage &&
+                  Boolean(
+                    isMock ? demoQuizReview.mine(c.id, q) : q.ownSubmission,
+                  )
+                }
+              />
+            </div>
+            {!manage ? (
+              <span className="quiz-list-grade" aria-label="Grade">
+                {(isMock ? demoQuizReview.mine(c.id, q) : q.ownSubmission)
+                  ?.score?.earned ?? "—"}{" "}
+                /{" "}
+                {q.questions.reduce(
+                  (sum, question) => sum + (question.points ?? 1),
+                  0,
+                )}
+              </span>
+            ) : (
+              <ArrowUpRight />
+            )}
+          </Link>
+          {!isMock && manage && c.status === "active" && (
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="delete-action"
+              disabled={deleting !== null}
+              onClick={async () => {
+                if (
+                  !(await confirmCourseAction(
+                    `Delete “${q.title}”? This cannot be undone. Quizzes with saved drafts or submissions cannot be deleted.`,
+                  ))
+                )
+                  return;
+                setDeleting(q.id);
+                setDeleteError("");
+                try {
+                  await liveQuizzes.remove(c.id, q.id);
+                  r.reload();
+                } catch (error) {
+                  setDeleteError((error as Error).message);
+                } finally {
+                  setDeleting(null);
+                }
+              }}
+            >
+              {deleting === q.id ? "Deleting…" : "Delete quiz"}
+            </Button>
           )}
-        </Link>
+        </div>
       ))}
     </>
   );
@@ -272,12 +368,39 @@ function newQuestion() {
   };
 }
 
-function CreateQuiz({ onCreated }: { onCreated: () => void }) {
+function CreateQuiz({
+  onCreated,
+  initialQuiz,
+}: {
+  onCreated: () => void;
+  initialQuiz?: Quiz;
+}) {
   const c = useCourse();
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
-  const [questions, setQuestions] = useState(() => [newQuestion()]);
+  const [needsRefresh, setNeedsRefresh] = useState(false);
+  const [questions, setQuestions] = useState(() =>
+    initialQuiz
+      ? initialQuiz.questions.map((q) => ({
+          id: q.id,
+          kind: q.kind ?? "single_choice",
+          points: String(q.points ?? 1),
+          prompt: q.prompt,
+          options: q.options.map((text) => ({
+            id: crypto.randomUUID(),
+            text,
+            correct: q.correctOptions?.includes(text) ?? false,
+          })),
+        }))
+      : [newQuestion()],
+  );
+  const localDue = initialQuiz?.dueAt
+    ? new Date(
+        Date.parse(initialQuiz.dueAt) -
+          new Date(initialQuiz.dueAt).getTimezoneOffset() * 60000,
+      ).toISOString()
+    : "";
   function updateQuestion(
     id: string,
     changes: Partial<Omit<ReturnType<typeof newQuestion>, "id">>,
@@ -299,308 +422,418 @@ function CreateQuiz({ onCreated }: { onCreated: () => void }) {
         type="button"
         disabled={busy}
         onClick={() => setOpen(!open)}
-        aria-expanded={open}
+        aria-haspopup="dialog"
       >
-        <Plus size={16} /> {open ? "Close quiz form" : "Create quiz"}
+        {initialQuiz ? "Edit draft" : "Create quiz"}
       </Button>
       {open && (
-        <form
-          className="panel stack"
-          onSubmit={async (e) => {
-            e.preventDefault();
-            if (busy) return;
-            const data = new FormData(e.currentTarget);
-            setBusy(true);
-            setMessage("");
-            try {
-              const dueAt = new Date(
-                `${data.get("dueDate")}T${data.get("dueTime")}`,
-              );
-              if (!Number.isFinite(dueAt.getTime())) {
-                throw Error("Choose a valid due date and time.");
-              }
-              const payload: QuizQuestionInput[] = questions.map((q, index) => {
-                const prompt = q.prompt.trim();
-                const points = Number(q.points);
-                const options =
-                  q.kind === "short_answer"
-                    ? []
-                    : q.options.map((option) => option.text.trim());
-                if (!prompt || !Number.isSafeInteger(points) || points < 1) {
-                  throw Error(
-                    `Question ${index + 1}: enter a prompt and a positive whole-number point value.`,
-                  );
-                }
-                if (
-                  q.kind !== "short_answer" &&
-                  (options.length < 2 ||
-                    options.some((option) => !option) ||
-                    new Set(options).size !== options.length)
-                ) {
-                  throw Error(
-                    `Question ${index + 1}: enter at least two distinct options.`,
-                  );
-                }
-                const correctOptions =
-                  q.kind === "short_answer"
-                    ? undefined
-                    : q.options
-                        .filter((option) => option.correct)
-                        .map((option) => option.text.trim());
-                if (
-                  correctOptions &&
-                  (!correctOptions.length ||
-                    (q.kind === "single_choice" && correctOptions.length !== 1))
-                ) {
-                  throw Error(
-                    `Question ${index + 1}: mark ${q.kind === "single_choice" ? "one correct option" : "at least one correct option"}.`,
-                  );
-                }
-                return {
-                  id: q.id,
-                  kind: q.kind,
-                  points,
-                  prompt,
-                  options,
-                  correctOptions,
-                };
-              });
-              await api.createQuiz(c.id, {
-                title: String(data.get("title")).trim(),
-                dueAt: dueAt.toISOString(),
-                questions: payload,
-                releaseGrades:
-                  hasShortAnswer || data.get("releaseGrades") !== "automatic"
-                    ? "manual"
-                    : "automatic",
-              });
-              setQuestions([newQuestion()]);
+        <dialog
+          className="quiz-create-dialog"
+          aria-labelledby="quiz-editor-title"
+          ref={(element) => {
+            if (element && !element.open) element.showModal();
+          }}
+          onCancel={(event) => {
+            event.preventDefault();
+            if (!busy) {
               setOpen(false);
-              onCreated();
-            } catch (error) {
-              setMessage((error as Error).message);
-            } finally {
-              setBusy(false);
+              if (needsRefresh) onCreated();
             }
           }}
         >
-          <h2>Create a quiz</h2>
-          <p>A quiz can contain just one question.</p>
-          {isMock && <p>Demo quizzes and grades are saved in this browser.</p>}
-          <label>
-            Quiz title
-            <input name="title" required maxLength={160} />
-          </label>
-          <div className="quiz-deadline-fields">
-            <label>
-              Due date
-              <input name="dueDate" type="date" required />
-            </label>
-            <label>
-              Due time (local)
-              <input name="dueTime" type="time" defaultValue="23:59" required />
-            </label>
-          </div>
-          {questions.map((question, index) => (
-            <fieldset
-              className="quiz-builder-question"
-              key={question.id}
-              disabled={busy}
-            >
-              <legend>Question {index + 1}</legend>
-              <div className="quiz-question-fields">
-                <label>
-                  Question type
-                  <select
-                    value={question.kind}
-                    onChange={(e) =>
-                      updateQuestion(question.id, {
-                        kind: e.target.value as QuestionKind,
-                        options: question.options.map((option) => ({
-                          ...option,
-                          correct: false,
-                        })),
-                      })
+          <form
+            noValidate
+            className="stack"
+            onSubmit={async (e) => {
+              e.preventDefault();
+              if (busy) return;
+              const data = new FormData(e.currentTarget);
+              setBusy(true);
+              setMessage("");
+              try {
+                const dueAt = new Date(
+                  `${data.get("dueDate")}T${data.get("dueTime")}`,
+                );
+                if (!Number.isFinite(dueAt.getTime())) {
+                  throw Error("Choose a valid due date and time.");
+                }
+                const payload: QuizQuestionInput[] = questions.map(
+                  (q, index) => {
+                    const prompt = q.prompt.trim();
+                    const points = Number(q.points);
+                    const options =
+                      q.kind === "short_answer"
+                        ? []
+                        : q.options.map((option) => option.text.trim());
+                    if (
+                      !prompt ||
+                      !Number.isSafeInteger(points) ||
+                      points < 1
+                    ) {
+                      throw Error(
+                        `Question ${index + 1}: enter a prompt and a positive whole-number point value.`,
+                      );
                     }
-                  >
-                    {Object.entries(questionKinds).map(([kind, label]) => (
-                      <option key={kind} value={kind}>
-                        {label}
-                      </option>
-                    ))}
-                  </select>
-                </label>
+                    if (
+                      q.kind !== "short_answer" &&
+                      (options.length < 2 ||
+                        options.length > 20 ||
+                        options.some((option) => !option) ||
+                        new Set(options).size !== options.length)
+                    ) {
+                      throw Error(
+                        `Question ${index + 1}: enter at least two distinct options.`,
+                      );
+                    }
+                    const correctOptions =
+                      q.kind === "short_answer"
+                        ? undefined
+                        : q.options
+                            .filter((option) => option.correct)
+                            .map((option) => option.text.trim());
+                    if (
+                      correctOptions &&
+                      (!correctOptions.length ||
+                        (q.kind === "single_choice" &&
+                          correctOptions.length !== 1))
+                    ) {
+                      throw Error(
+                        `Question ${index + 1}: mark ${q.kind === "single_choice" ? "one correct option" : "at least one correct option"}.`,
+                      );
+                    }
+                    return {
+                      id: q.id,
+                      kind: q.kind,
+                      points,
+                      prompt,
+                      options,
+                      correctOptions,
+                    };
+                  },
+                );
+                const maxAttempts = Number(data.get("maxAttempts") ?? 1);
+                if (
+                  !Number.isInteger(maxAttempts) ||
+                  maxAttempts < 1 ||
+                  maxAttempts > 2147483647
+                )
+                  throw new Error(
+                    "Maximum attempts must be a positive whole number.",
+                  );
+                const input: Omit<Quiz, "id" | "questions"> & {
+                  questions: QuizQuestionInput[];
+                } = {
+                  title: String(data.get("title") ?? "").trim(),
+                  dueAt: dueAt.toISOString(),
+                  questions: payload,
+                  releaseGrades:
+                    hasShortAnswer || data.get("releaseGrades") !== "automatic"
+                      ? "manual"
+                      : "automatic",
+                  maxAttempts,
+                };
+                if (initialQuiz) {
+                  try {
+                    await liveQuizzes.updateDraft(c.id, initialQuiz, input);
+                  } catch (error) {
+                    setNeedsRefresh(true);
+                    throw new Error(
+                      `Some draft changes may already be saved. Close this editor and reopen the draft before retrying. ${(error as Error).message}`,
+                    );
+                  }
+                } else await api.createQuiz(c.id, input);
+                setQuestions([newQuestion()]);
+                setOpen(false);
+                onCreated();
+              } catch (error) {
+                setMessage((error as Error).message);
+              } finally {
+                setBusy(false);
+              }
+            }}
+          >
+            <h2 id="quiz-editor-title">
+              {initialQuiz ? "Edit quiz draft" : "Create a quiz"}
+            </h2>
+            {!isMock && (
+              <p>
+                Save a private draft first. Publish it separately when it is
+                ready.
+              </p>
+            )}
+            <p>A quiz can contain just one question.</p>
+            {isMock && (
+              <p>Demo quizzes and grades are saved in this browser.</p>
+            )}
+            <label>
+              Quiz title
+              <input
+                name="title"
+                required
+                maxLength={160}
+                defaultValue={initialQuiz?.title}
+              />
+            </label>
+            <div className="quiz-deadline-fields">
+              <label>
+                Due date
+                <input
+                  name="dueDate"
+                  type="date"
+                  required
+                  defaultValue={localDue.slice(0, 10)}
+                />
+              </label>
+              <label>
+                Due time (local)
+                <input
+                  name="dueTime"
+                  type="time"
+                  defaultValue={localDue.slice(11, 16) || "23:59"}
+                  required
+                />
+              </label>
+            </div>
+            {!isMock && (
+              <label>
+                Maximum attempts
+                <input
+                  name="maxAttempts"
+                  type="number"
+                  min={1}
+                  step={1}
+                  defaultValue={initialQuiz?.maxAttempts ?? 1}
+                  required
+                />
+                <small>
+                  Each submission uses one attempt. The latest submitted attempt
+                  is used for the displayed grade.
+                </small>
+              </label>
+            )}
+            {questions.map((question, index) => (
+              <fieldset
+                className="quiz-builder-question"
+                key={question.id}
+                disabled={busy}
+              >
+                <legend>Question {index + 1}</legend>
+                <div className="quiz-question-fields">
+                  <label>
+                    Question type
+                    <select
+                      value={question.kind}
+                      onChange={(e) =>
+                        updateQuestion(question.id, {
+                          kind: e.target.value as QuestionKind,
+                          options: question.options.map((option) => ({
+                            ...option,
+                            correct: false,
+                          })),
+                        })
+                      }
+                    >
+                      {Object.entries(questionKinds).map(([kind, label]) => (
+                        <option key={kind} value={kind}>
+                          {label}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <label>
+                    Points
+                    <input
+                      type="number"
+                      min={1}
+                      step={1}
+                      required
+                      value={question.points}
+                      onChange={(e) =>
+                        updateQuestion(question.id, { points: e.target.value })
+                      }
+                    />
+                  </label>
+                </div>
                 <label>
-                  Points
-                  <input
-                    type="number"
-                    min={1}
-                    step={1}
+                  Prompt
+                  <textarea
                     required
-                    value={question.points}
+                    value={question.prompt}
                     onChange={(e) =>
-                      updateQuestion(question.id, { points: e.target.value })
+                      updateQuestion(question.id, { prompt: e.target.value })
                     }
                   />
                 </label>
-              </div>
-              <label>
-                Prompt
-                <textarea
-                  required
-                  value={question.prompt}
-                  onChange={(e) =>
-                    updateQuestion(question.id, { prompt: e.target.value })
-                  }
-                />
-              </label>
-              {question.kind === "short_answer" && (
-                <p>Manually graded by the instructor.</p>
-              )}
-              {question.kind !== "short_answer" && (
-                <div
-                  className="quiz-option-list"
-                  role="group"
-                  aria-label={`Answer options for question ${index + 1}`}
-                >
-                  <strong>Answer options</strong>
-                  <p>
-                    {question.kind === "single_choice"
-                      ? "Mark one correct option."
-                      : "Mark all correct options."}
-                  </p>
-                  {question.options.map((option, optionIndex) => (
-                    <div className="quiz-option-editor" key={option.id}>
-                      <label>
-                        Option {optionIndex + 1}
-                        <input
-                          value={option.text}
-                          required
-                          onKeyDown={(e) => {
-                            if (e.key === "Enter" && !e.nativeEvent.isComposing)
-                              e.preventDefault();
-                          }}
-                          onChange={(e) =>
+                {question.kind === "short_answer" && (
+                  <p>Manually graded by the instructor.</p>
+                )}
+                {question.kind !== "short_answer" && (
+                  <div
+                    className="quiz-option-list"
+                    role="group"
+                    aria-label={`Answer options for question ${index + 1}`}
+                  >
+                    <strong>Answer options</strong>
+                    <p>
+                      {question.kind === "single_choice"
+                        ? "Mark one correct option."
+                        : "Mark all correct options."}
+                    </p>
+                    {question.options.map((option, optionIndex) => (
+                      <div className="quiz-option-editor" key={option.id}>
+                        <label>
+                          Option {optionIndex + 1}
+                          <input
+                            value={option.text}
+                            required
+                            onKeyDown={(e) => {
+                              if (
+                                e.key === "Enter" &&
+                                !e.nativeEvent.isComposing
+                              )
+                                e.preventDefault();
+                            }}
+                            onChange={(e) =>
+                              updateQuestion(question.id, {
+                                options: question.options.map((item) =>
+                                  item.id === option.id
+                                    ? { ...item, text: e.target.value }
+                                    : item,
+                                ),
+                              })
+                            }
+                          />
+                        </label>
+                        <label className="quiz-correct-option">
+                          <input
+                            type={
+                              question.kind === "single_choice"
+                                ? "radio"
+                                : "checkbox"
+                            }
+                            name={`correct-${question.id}`}
+                            checked={option.correct}
+                            aria-label={`Mark option ${optionIndex + 1} correct for question ${index + 1}`}
+                            onChange={(e) => {
+                              const checked = e.target.checked;
+                              updateQuestion(question.id, {
+                                options: question.options.map((item) => ({
+                                  ...item,
+                                  correct:
+                                    item.id === option.id
+                                      ? checked
+                                      : question.kind === "multiple_choice" &&
+                                        item.correct,
+                                })),
+                              });
+                            }}
+                          />
+                          Correct
+                        </label>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          disabled={question.options.length <= 2}
+                          aria-label={`Remove option ${optionIndex + 1} from question ${index + 1}`}
+                          onClick={() =>
                             updateQuestion(question.id, {
-                              options: question.options.map((item) =>
-                                item.id === option.id
-                                  ? { ...item, text: e.target.value }
-                                  : item,
+                              options: question.options.filter(
+                                (item) => item.id !== option.id,
                               ),
                             })
                           }
-                        />
-                      </label>
-                      <label className="quiz-correct-option">
-                        <input
-                          type={
-                            question.kind === "single_choice"
-                              ? "radio"
-                              : "checkbox"
-                          }
-                          name={`correct-${question.id}`}
-                          checked={option.correct}
-                          aria-label={`Mark option ${optionIndex + 1} correct for question ${index + 1}`}
-                          onChange={(e) => {
-                            const checked = e.target.checked;
-                            updateQuestion(question.id, {
-                              options: question.options.map((item) => ({
-                                ...item,
-                                correct:
-                                  item.id === option.id
-                                    ? checked
-                                    : question.kind === "multiple_choice" &&
-                                      item.correct,
-                              })),
-                            });
-                          }}
-                        />
-                        Correct
-                      </label>
-                      <Button
-                        type="button"
-                        variant="outline"
-                        size="sm"
-                        disabled={question.options.length <= 2}
-                        aria-label={`Remove option ${optionIndex + 1} from question ${index + 1}`}
-                        onClick={() =>
-                          updateQuestion(question.id, {
-                            options: question.options.filter(
-                              (item) => item.id !== option.id,
-                            ),
-                          })
-                        }
-                      >
-                        <X size={15} aria-hidden="true" />
-                      </Button>
-                    </div>
-                  ))}
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    onClick={() =>
-                      updateQuestion(question.id, {
-                        options: [...question.options, newQuizOption()],
-                      })
-                    }
-                  >
-                    <Plus size={15} aria-hidden="true" /> Add option
-                  </Button>
-                </div>
-              )}
+                        >
+                          <X size={15} aria-hidden="true" />
+                        </Button>
+                      </div>
+                    ))}
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      disabled={question.options.length >= 20}
+                      onClick={() =>
+                        updateQuestion(question.id, {
+                          options: [...question.options, newQuizOption()],
+                        })
+                      }
+                    >
+                      <Plus size={15} aria-hidden="true" /> Add option
+                    </Button>
+                  </div>
+                )}
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  disabled={questions.length === 1}
+                  aria-label={`Remove question ${index + 1}`}
+                  onClick={() =>
+                    setQuestions((current) =>
+                      current.filter((q) => q.id !== question.id),
+                    )
+                  }
+                >
+                  Remove question
+                </Button>
+              </fieldset>
+            ))}
+            <div className="quiz-builder-settings">
               <Button
                 type="button"
                 variant="outline"
-                size="sm"
-                disabled={questions.length === 1}
-                aria-label={`Remove question ${index + 1}`}
-                onClick={() =>
-                  setQuestions((current) =>
-                    current.filter((q) => q.id !== question.id),
-                  )
-                }
+                className="quiz-add-question"
+                disabled={busy || questions.length >= 100}
+                onClick={() => {
+                  const question = newQuestion();
+                  setQuestions((current) => [...current, question]);
+                }}
               >
-                Remove question
+                <Plus size={16} /> Add question
               </Button>
-            </fieldset>
-          ))}
-          {isMock && (
-            <label>
-              Release grades
-              {hasShortAnswer ? (
-                <span>Instructor publishes after grading short answers.</span>
-              ) : (
-                <select
-                  className="quiz-release-select"
-                  name="releaseGrades"
-                  defaultValue="manual"
-                >
-                  <option value="manual">Instructor publishes manually</option>
-                  <option value="automatic">
-                    Show score immediately after submission
-                  </option>
-                </select>
-              )}
-            </label>
-          )}
-          <div className="quiz-builder-settings">
-            <Button
-              type="button"
-              variant="outline"
-              disabled={busy}
-              onClick={() => {
-                const question = newQuestion();
-                setQuestions((current) => [...current, question]);
-              }}
-            >
-              <Plus size={16} /> Add question
-            </Button>
-            <strong>{totalPoints} total points</strong>
-          </div>
-          {message && <p role="alert">{message}</p>}
-          <Button disabled={busy}>{busy ? "Creating…" : "Create quiz"}</Button>
-        </form>
+              <strong>{totalPoints} total points</strong>
+            </div>
+            {
+              <label>
+                Release grades
+                {hasShortAnswer ? (
+                  <span>Instructor publishes after grading short answers.</span>
+                ) : (
+                  <select
+                    className="quiz-release-select"
+                    name="releaseGrades"
+                    defaultValue={initialQuiz?.releaseGrades ?? "manual"}
+                  >
+                    <option value="manual">
+                      Instructor publishes manually
+                    </option>
+                    <option value="automatic">
+                      Show score immediately after submission
+                    </option>
+                  </select>
+                )}
+              </label>
+            }
+            {message && <CourseFeedback>{message}</CourseFeedback>}
+            <div className="actions">
+              <Button disabled={busy || needsRefresh}>
+                {busy ? "Saving…" : isMock ? "Create quiz" : "Save draft"}
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                disabled={busy}
+                onClick={() => {
+                  setOpen(false);
+                  if (needsRefresh) onCreated();
+                }}
+              >
+                Cancel
+              </Button>
+            </div>
+          </form>
+        </dialog>
       )}
     </div>
   );
@@ -651,57 +884,150 @@ function AnswerInput({
     </label>
   ));
 }
-function QuizReview({ quiz }: { quiz: Quiz }) {
+function QuizReview(props: { quiz: Quiz; onChanged: () => void }) {
+  if (!isMock && props.quiz.status === "draft")
+    return <QuizDraftReview {...props} />;
+  return <PublishedQuizReview {...props} />;
+}
+function QuizDraftReview({
+  quiz,
+  onChanged,
+}: {
+  quiz: Quiz;
+  onChanged: () => void;
+}) {
+  const course = useCourse();
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  return (
+    <section className="quiz-workspace">
+      <div className="announcement-toolbar course-page-header">
+        <h1>{quiz.title}</h1>
+        {course.status === "active" && (
+          <div className="actions">
+            <CreateQuiz initialQuiz={quiz} onCreated={onChanged} />
+            <Button
+              disabled={busy || !quiz.questions.length}
+              onClick={async () => {
+                if (
+                  !(await confirmCourseAction(
+                    "Publish this quiz? Students will be able to see and attempt it.",
+                  ))
+                )
+                  return;
+                setBusy(true);
+                setError("");
+                try {
+                  await liveQuizzes.publishQuiz(course.id, quiz.id);
+                  onChanged();
+                } catch (e) {
+                  setError((e as Error).message);
+                } finally {
+                  setBusy(false);
+                }
+              }}
+            >
+              {busy ? "Publishing…" : "Publish quiz"}
+            </Button>
+          </div>
+        )}
+      </div>
+      <p className="notice">Draft · not visible to students</p>
+      <p>Maximum attempts: {quiz.maxAttempts ?? 1}</p>
+      <DueDate dueAt={quiz.dueAt} />
+      <QuizPreview quiz={quiz} />
+      {error && <CourseFeedback>{error}</CourseFeedback>}
+    </section>
+  );
+}
+function PublishedQuizReview({
+  quiz,
+  onChanged,
+}: {
+  quiz: Quiz;
+  onChanged: () => void;
+}) {
   const course = useCourse();
   const records = useData(
-    async () => demoQuizReview.list(course.id, quiz.id),
+    async () =>
+      isMock
+        ? demoQuizReview.list(course.id, quiz.id)
+        : liveQuizzes.submissions(course.id, quiz),
     [course.id, quiz.id],
   );
   const [publishMessage, setPublishMessage] = useState("");
-  const hasUnpublished = records.data?.some((record) => !record.published);
+  const [publishFailed, setPublishFailed] = useState(false);
+  const [publishing, setPublishing] = useState(false);
+  const [published, setPublished] = useState(quiz.showResults === true);
+  const hasUnpublished =
+    !published && records.data?.some((record) => !record.published);
   return (
     <section className="quiz-workspace">
       <Title
         over=""
         title={quiz.title}
         description={
-          quiz.releaseGrades === "automatic"
-            ? "Grades are released automatically."
-            : "Grades are released when you publish them."
+          !isMock
+            ? published
+              ? "Grades are available to students."
+              : "Grades are released when you publish them."
+            : quiz.releaseGrades === "automatic"
+              ? "Grades are released automatically."
+              : "Grades are released when you publish them."
         }
       />
-      {quiz.releaseGrades !== "automatic" && (
+      {(isMock ? quiz.releaseGrades !== "automatic" : !quiz.showResults) && (
         <div className="mb-4">
           <Button
-            disabled={!hasUnpublished}
-            onClick={() => {
+            disabled={
+              !hasUnpublished || publishing || course.status !== "active"
+            }
+            onClick={async () => {
+              setPublishing(true);
               try {
-                demoQuizReview.publish(course.id, quiz.id);
+                if (isMock) demoQuizReview.publish(course.id, quiz.id);
+                else await liveQuizzes.publish(course.id, quiz);
+                setPublished(true);
+                setPublishFailed(false);
                 setPublishMessage("Grades published.");
                 records.reload();
               } catch (error) {
+                setPublishFailed(true);
                 setPublishMessage((error as Error).message);
+              } finally {
+                setPublishing(false);
               }
             }}
           >
-            {records.data?.length && !hasUnpublished
-              ? "Grades published"
-              : "Publish grades"}
+            {publishing
+              ? "Publishing…"
+              : records.data?.length && !hasUnpublished
+                ? "Grades published"
+                : "Publish grades"}
           </Button>
-          {publishMessage && <p role="status">{publishMessage}</p>}
+          {publishMessage && (
+            <CourseFeedback tone={publishFailed ? "error" : "success"}>
+              {publishMessage}
+            </CourseFeedback>
+          )}
         </div>
       )}
+      {!isMock && <QuizPreview quiz={quiz} />}
       <h2>Student submissions {records.data && `(${records.data.length})`}</h2>
       {!records.data ? (
         <State {...records} />
       ) : records.data.length === 0 ? (
-        <p>No submissions yet. Sign in as Jamie to submit this quiz.</p>
+        <p>No submissions yet.</p>
       ) : (
         records.data.map((record) => (
           <SubmissionReview
             key={record.id}
             quiz={quiz}
-            record={record}
+            record={{
+              ...record,
+              published:
+                (published || record.published) && record.score !== undefined,
+            }}
             onSave={records.reload}
           />
         ))
@@ -721,24 +1047,38 @@ function SubmissionReview({
 }) {
   const course = useCourse();
   const [error, setError] = useState("");
-  function save(data: FormData) {
-    const marks: Record<string, number> = {};
-    for (const question of quiz.questions) {
-      const value = data.get(question.id);
-      if (typeof value === "string" && value.trim())
-        marks[question.id] = Number(value);
-    }
+  const shortAnswers = quiz.questions.filter(
+    (question) => question.kind === "short_answer",
+  );
+  const hasSavedMarks =
+    shortAnswers.length === 0 ||
+    shortAnswers.some((question) => record.marks[question.id] !== undefined);
+  const [editing, setEditing] = useState(!hasSavedMarks && !record.published);
+  const canEdit = !record.published && course.status === "active";
+  const [saving, setSaving] = useState(false);
+  async function save(data: FormData) {
+    if (saving || !editing || !canEdit) return;
+    setSaving(true);
+    setError("");
     try {
-      demoQuizReview.save(
-        course.id,
-        quiz.id,
-        record.id,
-        marks,
-        String(data.get("feedback") ?? "").trim(),
-      );
+      const marks = readQuestionMarks(quiz.questions, data);
+      const feedback = String(data.get("feedback") ?? "").trim();
+      if (isMock)
+        demoQuizReview.save(course.id, quiz.id, record.id, marks, feedback);
+      else
+        await liveQuizzes.grade(
+          course.id,
+          quiz,
+          record.id,
+          { ...record.marks, ...marks },
+          feedback,
+        );
+      setEditing(false);
       onSave();
     } catch (error) {
       setError((error as Error).message);
+    } finally {
+      setSaving(false);
     }
   }
   return (
@@ -748,10 +1088,12 @@ function SubmissionReview({
         {record.published ? "Published" : "Unpublished"}
       </summary>
       <form
+        noValidate
         className="stack"
         onSubmit={(event) => {
           event.preventDefault();
-          save(new FormData(event.currentTarget));
+          if (!saving && editing && canEdit)
+            void save(new FormData(event.currentTarget));
         }}
       >
         {quiz.questions.map((question, index) => {
@@ -764,7 +1106,7 @@ function SubmissionReview({
               <p className="quiz-submitted-answer">
                 {Array.isArray(answer) ? answer.join(", ") : answer}
               </p>
-              {question.kind === "short_answer" && !record.published ? (
+              {question.kind === "short_answer" && editing && canEdit ? (
                 <label>
                   Score for question {index + 1} (max {question.points ?? 1})
                   <input
@@ -774,6 +1116,7 @@ function SubmissionReview({
                     max={question.points ?? 1}
                     step="any"
                     defaultValue={record.marks[question.id]}
+                    disabled={saving || course.status !== "active"}
                   />
                 </label>
               ) : (
@@ -785,87 +1128,293 @@ function SubmissionReview({
             </div>
           );
         })}
-        {record.published ? (
-          record.feedback && (
-            <p className="quiz-submitted-answer">{record.feedback}</p>
-          )
-        ) : (
+        {editing && canEdit ? (
           <>
             <label>
               Feedback
-              <textarea name="feedback" defaultValue={record.feedback} />
+              <textarea
+                name="feedback"
+                defaultValue={record.feedback}
+                disabled={saving}
+              />
             </label>
             <div className="actions quiz-actions">
-              <Button variant="outline">Save grades and feedback</Button>
+              <Button variant="outline" disabled={saving}>
+                {saving ? "Saving…" : "Save grades and feedback"}
+              </Button>
+              <Button
+                type="button"
+                variant="ghost"
+                disabled={saving}
+                onClick={() => {
+                  setEditing(false);
+                  setError("");
+                }}
+              >
+                Cancel
+              </Button>
             </div>
           </>
+        ) : (
+          <>
+            <div>
+              <h3>Feedback</h3>
+              <p className="quiz-submitted-answer">
+                {record.feedback || "No feedback saved."}
+              </p>
+            </div>
+            {canEdit && (
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => {
+                  setError("");
+                  setEditing(true);
+                }}
+              >
+                Edit
+              </Button>
+            )}
+          </>
         )}
-        {error && <p role="alert">{error}</p>}
+        {error && <CourseFeedback>{error}</CourseFeedback>}
       </form>
     </details>
   );
 }
 function QuizTaking({ quiz }: { quiz: Quiz }) {
+  return isMock ? (
+    <MockQuizTaking quiz={quiz} />
+  ) : (
+    <LiveQuizTaking quiz={quiz} />
+  );
+}
+function LiveQuizTaking({ quiz }: { quiz: Quiz }) {
+  const course = useCourse();
+  const [composing, setComposing] = useState(false);
+  const result = useData(
+    () => liveQuizzes.attempts(course.id, quiz),
+    [course.id, quiz.id],
+  );
+  if (!result.data) return <State {...result} />;
+  const completed = result.data.filter((row) => row.attemptState !== "draft");
+  const draft = result.data.find((row) => row.attemptState === "draft");
+  const max = quiz.maxAttempts ?? 1;
+  const open =
+    course.status === "active" &&
+    quiz.status === "published" &&
+    (!quiz.opensAt || Date.parse(quiz.opensAt) <= Date.now()) &&
+    (!quiz.dueAt || Date.parse(quiz.dueAt) > Date.now());
+  const canAttempt = open && completed.length < max;
+  if (canAttempt && (composing || completed.length === 0))
+    return (
+      <>
+        <p className="notice">
+          Attempt {completed.length + 1} of {max}
+        </p>
+        <QuizForm
+          key={completed.length}
+          quiz={quiz}
+          initial={draft?.answers ?? {}}
+          onFinished={() => {
+            setComposing(false);
+            result.reload();
+          }}
+        />
+      </>
+    );
+  return (
+    <section className="quiz-workspace">
+      <h1>{quiz.title}</h1>
+      <p>
+        Attempts used: {completed.length} / {max}
+      </p>
+      <p>The latest submitted attempt is used for your displayed grade.</p>
+      {completed.length > 0 && (
+        <QuizResult quiz={quiz} submission={completed[0]} embedded />
+      )}
+      {canAttempt ? (
+        <Button onClick={() => setComposing(true)}>
+          {draft ? "Continue saved attempt" : "Start another attempt"}
+        </Button>
+      ) : (
+        <p>
+          {!open
+            ? "This quiz is not open for submissions."
+            : "You have used all available attempts."}
+        </p>
+      )}
+      <h2 className="quiz-history-title">Attempt history</h2>
+      {!completed.length ? (
+        <p>No submitted attempts yet.</p>
+      ) : (
+        completed.map((row) => (
+          <details className="panel" key={row.id}>
+            <summary>
+              Attempt {row.attemptNumber} · {date(row.submittedAt)} ·{" "}
+              {row.score
+                ? `${row.score.earned} / ${row.score.possible}`
+                : "Grade not released"}
+            </summary>
+            <p className="quiz-submitted-answer">
+              {row.score
+                ? row.feedback || "No written feedback is available yet."
+                : "Waiting for your instructor to publish grades."}
+            </p>
+          </details>
+        ))
+      )}
+    </section>
+  );
+}
+function MockQuizTaking({ quiz }: { quiz: Quiz }) {
   const c = useCourse();
   const r = useData(async () => {
-    const submission = isMock ? demoQuizReview.mine(c.id, quiz) : null;
+    const submission = isMock
+      ? demoQuizReview.mine(c.id, quiz)
+      : await liveQuizzes.mine(c.id, quiz);
     return submission
       ? { submission }
       : { submission: null, draft: await api.draft(c.id, quiz.id) };
   }, [c.id, quiz.id]);
   if (!r.data) return <State {...r} />;
   if (r.data.submission)
+    return <QuizResult quiz={quiz} submission={r.data.submission} />;
+  if (
+    c.status !== "active" ||
+    quiz.status === "closed" ||
+    (quiz.opensAt && Date.parse(quiz.opensAt) > Date.now()) ||
+    (quiz.dueAt && Date.parse(quiz.dueAt) < Date.now())
+  )
     return (
-      <section className="quiz-workspace">
-        <Title over="" title={quiz.title} description="Quiz submitted" />
-        <div className="panel">
-          <h2>Feedback</h2>
-          <p className="quiz-submitted-answer">
-            {r.data.submission.score
-              ? r.data.submission.feedback ||
-                "Your instructor did not leave written feedback."
-              : "Feedback will appear here when your instructor publishes grades."}
-          </p>
-        </div>
-      </section>
+      <div className="panel">
+        <h2>{quiz.title}</h2>
+        <p>This quiz is not open for submissions.</p>
+      </div>
     );
   return <QuizForm quiz={quiz} initial={r.data.draft ?? {}} />;
 }
-function QuizForm({ quiz, initial }: { quiz: Quiz; initial: Answers }) {
+function QuizResult({
+  quiz,
+  submission,
+  embedded = false,
+}: {
+  quiz: Quiz;
+  submission: Submission;
+  embedded?: boolean;
+}) {
+  const course = useCourse();
+  return (
+    <section className="quiz-workspace">
+      {!embedded && (
+        <Title over="" title={quiz.title} description="Quiz submitted" />
+      )}
+      <div className="panel">
+        <h2>
+          {submission.score ? "Grade and feedback" : "Waiting for grades"}
+        </h2>
+        <p>
+          Grade: {submission.score?.earned ?? "—"} /{" "}
+          {quiz.questions.reduce((sum, q) => sum + (q.points ?? 1), 0)}
+        </p>
+        <p className="quiz-submitted-answer">
+          {submission.score
+            ? submission.feedback || "No written feedback is available yet."
+            : "Your quiz has been submitted. Your grade and feedback will appear here when your instructor publishes them."}
+        </p>
+        <Button asChild variant="outline">
+          <Link to={`/courses/${course.id}/quizzes`}>Back to quizzes</Link>
+        </Button>
+      </div>
+    </section>
+  );
+}
+function QuizForm({
+  quiz,
+  initial,
+  onFinished,
+}: {
+  quiz: Quiz;
+  initial: Answers;
+  onFinished?: () => void;
+}) {
   const c = useCourse();
   const [answers, setAnswers] = useState(initial);
   const [message, setMessage] = useState("");
+  const [messageTone, setMessageTone] = useState<"error" | "success" | "info">(
+    "info",
+  );
   const [done, setDone] = useState(false);
+  const [submitted, setSubmitted] = useState<Submission | null>(null);
+  const [viewResult, setViewResult] = useState(false);
   const [busy, setBusy] = useState(false);
   async function act(submit: boolean) {
+    if (busy || done) return;
     setBusy(true);
+    setMessage("");
+    setMessageTone("info");
     try {
       if (submit) {
         const s = await api.submit(c.id, quiz.id, answers);
         setDone(true);
-        const receipt = `Submitted ${date(s.submittedAt)} · Receipt ${s.id}.`;
-        const score = s.score;
-        setMessage(
-          score
-            ? `${receipt} Auto-graded score: ${score.earned}/${score.possible}.${score.manualPending ? ` ${score.manualPending} points pending manual grading.` : ""}`
-            : `${receipt} Your grade will appear here when your instructor publishes it.`,
-        );
+        setSubmitted(s);
       } else {
         await api.saveDraft(c.id, quiz.id, answers);
+        setMessageTone("success");
         setMessage("Draft saved. You can leave and return to this quiz.");
       }
     } catch (e) {
+      setMessageTone("error");
       setMessage((e as Error).message);
     } finally {
       setBusy(false);
     }
+  }
+  if (submitted) {
+    if (viewResult) return <QuizResult quiz={quiz} submission={submitted} />;
+    return (
+      <section className="quiz-workspace">
+        <Title over="" title={quiz.title} description="Quiz submitted" />
+        <dialog
+          className="quiz-success-dialog"
+          aria-labelledby="quiz-success-title"
+          ref={(element) => {
+            if (element && !element.open) element.showModal();
+          }}
+          onCancel={() => (onFinished ? onFinished() : setViewResult(true))}
+          onClose={() => (onFinished ? onFinished() : setViewResult(true))}
+        >
+          <div className="stack">
+            <h2 id="quiz-success-title">Submitted successfully</h2>
+            <p>
+              {submitted.score
+                ? "Your answers have been saved."
+                : "Your answers have been saved. Please wait for your instructor to publish your grade and feedback."}
+            </p>
+            {submitted.score && (
+              <div className="quiz-success-grade" aria-label="Your grade">
+                <span>Your grade</span>
+                <strong>
+                  {submitted.score.earned} / {submitted.score.possible}
+                </strong>
+              </div>
+            )}
+            <div className="actions quiz-success-actions">
+              <Button asChild>
+                <Link to={`/courses/${c.id}/quizzes`}>Done</Link>
+              </Button>
+            </div>
+          </div>
+        </dialog>
+      </section>
+    );
   }
   return (
     <section className="quiz-workspace">
       <Title
         over=""
         title={quiz.title}
-        description={`${quiz.questions.length} questions · ${quiz.questions.reduce((total, q) => total + (q.points ?? 1), 0)} points`}
+        description={`${quiz.questions.length} ${quiz.questions.length === 1 ? "question" : "questions"} · ${quiz.questions.reduce((total, q) => total + (q.points ?? 1), 0)} points`}
       />
       <div className="quiz-due">
         <DueDate dueAt={quiz.dueAt} />
@@ -881,10 +1430,11 @@ function QuizForm({ quiz, initial }: { quiz: Quiz; initial: Answers }) {
             disabled={done || busy}
             className="panel question"
             key={q.id}
+            aria-labelledby={`quiz-question-${q.id}`}
           >
-            <legend>
+            <h2 className="quiz-question-heading" id={`quiz-question-${q.id}`}>
               {i + 1}. {q.prompt}
-            </legend>
+            </h2>
             <p className="quiz-question-meta">
               {questionKinds[q.kind ?? "single_choice"]} · {q.points ?? 1}{" "}
               {(q.points ?? 1) === 1 ? "point" : "points"}
@@ -911,7 +1461,7 @@ function QuizForm({ quiz, initial }: { quiz: Quiz; initial: Answers }) {
             {done ? "Submitted" : "Submit answers"}
           </Button>
         </div>
-        <p role="status">{message}</p>
+        <CourseFeedback tone={messageTone}>{message}</CourseFeedback>
       </form>
     </section>
   );
@@ -931,6 +1481,9 @@ function CourseResources() {
   const searchInput = useRef<HTMLInputElement>(null);
   const [search, setSearch] = useState("");
   const [message, setMessage] = useState("");
+  const [messageTone, setMessageTone] = useState<"error" | "success" | "info">(
+    "info",
+  );
   const [busy, setBusy] = useState(false);
   const uploadDialog = useRef<HTMLDialogElement>(null);
   const [uploadError, setUploadError] = useState("");
@@ -973,11 +1526,22 @@ function CourseResources() {
   );
   return (
     <>
-      <Title
-        over=""
-        title="Resources"
-        description="Course materials and shared notes."
-      />
+      <div className="announcement-toolbar course-page-header">
+        <h1>Resources</h1>
+        <Button
+          type="button"
+          aria-haspopup="dialog"
+          disabled={!canUpload}
+          onClick={() => {
+            setMessage("");
+            setMessageTone("info");
+            setUploadError("");
+            uploadDialog.current?.showModal();
+          }}
+        >
+          Upload resource
+        </Button>
+      </div>
       <form
         className="resource-toolbar"
         onSubmit={(e) => {
@@ -1036,20 +1600,6 @@ function CourseResources() {
       {c.status === "archived" && (
         <p className="notice">Archived course. Resources are read-only.</p>
       )}
-      <div className="resource-list-controls">
-        <Button
-          type="button"
-          aria-haspopup="dialog"
-          disabled={!canUpload}
-          onClick={() => {
-            setMessage("");
-            setUploadError("");
-            uploadDialog.current?.showModal();
-          }}
-        >
-          <Plus size={16} /> Upload
-        </Button>
-      </div>
       <dialog
         className="resource-upload-dialog"
         ref={uploadDialog}
@@ -1077,20 +1627,24 @@ function CourseResources() {
               if (!canUpload) throw new Error("This course is read-only.");
               if (isMock) validateResourceFile(file, c.role);
               else validateBackendResourceFile(file);
+              const title = String(data.get("title") ?? "").trim();
+              if (!title) throw new Error("Enter a resource title.");
               await api.upload(c.id, {
                 file,
-                title: String(data.get("title")).trim(),
+                title,
                 resourceType,
+                visibility: "visible",
               });
               form.reset();
               uploadDialog.current?.close();
               setQuery("");
               setSearch("");
               r.reload();
+              setMessageTone("success");
               setMessage(
                 isMock
                   ? "Demo resource added to this session."
-                  : "File uploaded.",
+                  : "Resource uploaded successfully.",
               );
             } catch (error) {
               setUploadError((error as Error).message);
@@ -1125,11 +1679,7 @@ function CourseResources() {
               required
             />
           </label>
-          {uploadError && (
-            <p className="resource-upload-error" role="alert">
-              {uploadError}
-            </p>
-          )}
+          {uploadError && <CourseFeedback>{uploadError}</CourseFeedback>}
           <div className="actions resource-dialog-actions">
             <Button
               type="button"
@@ -1149,7 +1699,7 @@ function CourseResources() {
           </div>
         </form>
       </dialog>
-      {message && <p role="status">{message}</p>}
+      {message && <CourseFeedback tone={messageTone}>{message}</CourseFeedback>}
       {search && <h2>Search results for “{search}”</h2>}
       {!r.data ? (
         <State {...r} />
@@ -1228,6 +1778,7 @@ function CourseResources() {
                           if (preview) preview.opener = null;
                           setFileBusy(key);
                           setMessage("");
+                          setMessageTone("info");
                           try {
                             const { url } = await resourceFileUrl(
                               c.id,
@@ -1245,6 +1796,7 @@ function CourseResources() {
                             }
                           } catch (error) {
                             preview?.close();
+                            setMessageTone("error");
                             setMessage((error as Error).message);
                           } finally {
                             setFileBusy(null);
@@ -1258,6 +1810,44 @@ function CourseResources() {
                             : "Download"}
                       </Button>
                     ))}
+                    {c.status === "active" &&
+                      (c.role === "instructor" ||
+                        user?.systemRole === "admin" ||
+                        resource.ownerId === user?.id) && (
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          className="delete-action"
+                          disabled={fileBusy !== null}
+                          onClick={async () => {
+                            if (
+                              !(await confirmCourseAction(
+                                `Delete “${resource.name}”? The resource and its stored file will be removed. This cannot be undone.`,
+                              ))
+                            )
+                              return;
+                            setFileBusy(resource.id + "delete");
+                            setMessage("");
+                            setMessageTone("info");
+                            try {
+                              await deleteResource(c.id, resource.id);
+                              setMessageTone("success");
+                              setMessage("Resource deleted.");
+                            } catch (error) {
+                              setMessageTone("error");
+                              setMessage((error as Error).message);
+                            } finally {
+                              setFileBusy(null);
+                              r.reload();
+                            }
+                          }}
+                        >
+                          {fileBusy === resource.id + "delete"
+                            ? "Deleting…"
+                            : "Delete"}
+                        </Button>
+                      )}
                   </div>
                 )}
                 {resource.demoFile && (
