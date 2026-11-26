@@ -1,6 +1,5 @@
 import { Router } from 'express';
-import { requireUser } from '../middleware/current-user';
-import { requireCurrentUser } from '../middleware/current-user';
+import { requireUser, requireCurrentUser } from '../middleware/current-user';
 import { validateIds } from '../middleware/validation';
 import * as controller from '../controllers/courses';
 import announcementRoutes from './announcements';
@@ -13,7 +12,7 @@ router.use(requireCurrentUser);
 // Administrators may inspect courses but cannot modify teaching content or submit work.
 router.use((req, res, next) => {
   if (requireUser(res).isAdmin && !['GET', 'HEAD', 'OPTIONS'].includes(req.method)) {
-    res.status(403).json({ message: 'Administrator course access is read-only. Use a separate instructor or student account.' });
+    res.status(403).json({ message: 'Forbidden' });
     return;
   }
   next();

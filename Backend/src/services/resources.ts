@@ -17,6 +17,13 @@ function requireActiveCourse(status: string): void {
   if (status !== 'active') throw new HttpError(409, 'Reactivate this course before changing it');
 }
 
+// Restrict instructor materials to instructors and student notes to enrolled teaching participants.
+function requireUploadRole(user: CurrentUser, role: string | null, resourceType: ResourceUploadFields['resourceType']): void {
+  const manage = canManage(user, role);
+  if (resourceType === 'instructor_material' && !manage) throw new HttpError(403, 'Forbidden');
+  if (resourceType === 'student_note' && !manage && role !== 'student') throw new HttpError(403, 'Forbidden');
+}
+
 // Load a visible resource or report that it is not available to this account.
 async function visibleResource(tx: Prisma.TransactionClient, courseId: number, resourceId: number, user: CurrentUser): Promise<ResourceRecord> {
   const course = await requireCourseAccess(tx, courseId, user);
@@ -51,15 +58,14 @@ export const resourceService = {
   async upload(courseId: number, user: CurrentUser, file: ResourceFile, fields: ResourceUploadFields) {
     const course = await courseDb.read((tx) => requireCourseAccess(tx, courseId, user));
     requireActiveCourse(course.status);
-    const manage = canManage(user, course.role);
-    if (fields.resourceType === 'instructor_material' && !manage) throw new HttpError(403, 'Forbidden');
-    if (fields.resourceType === 'student_note' && !manage && course.role !== 'student') throw new HttpError(403, 'Forbidden');
+    requireUploadRole(user, course.role, fields.resourceType);
     const key = `resources/${courseId}/${randomUUID()}.pdf`;
     await putPdf(key, file.body);
     try {
       return await withCourseTransaction(courseId, async (tx) => {
         const current = await requireCourseAccess(tx, courseId, user);
         requireActiveCourse(current.status);
+        requireUploadRole(user, current.role, fields.resourceType);
         return resourceDb.create(tx, courseId, user.id, { ...fields, originalFilename: file.filename || 'document.pdf', fileSizeBytes: file.body.length, s3Key: key });
       });
     } catch (error) {

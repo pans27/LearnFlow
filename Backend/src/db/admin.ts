@@ -123,13 +123,15 @@ export const adminDb = {
 
   
   // Check the course and run related database operations atomically.
-  withCourse: <T>(courseId: number, operation: Parameters<typeof withCourseTransaction<T>>[1]) =>
+  withCourse: withCourseTransaction,
+
+  // Coordinate enrollment changes with administrator promotion without locking the course row.
+  withEnrollmentLock: <T>(courseId: number, operation: Parameters<typeof withCourseTransaction<T>>[1]) =>
     getPrisma().$transaction(async (tx) => {
       // Share the promotion lock so enrollment cannot race an admin role change.
       await tx.$queryRaw`SELECT pg_advisory_xact_lock(1724001)::text`;
       const course = await tx.course.findUnique({ where: { id: courseId }, select: { id: true, status: true } });
       if (!course) throw new HttpError(404, 'Course not found');
-      await tx.$queryRaw`SELECT course_id FROM learnflow.courses WHERE course_id = ${courseId} FOR UPDATE`;
       return operation(tx, course);
     }),
 

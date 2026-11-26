@@ -378,7 +378,8 @@ paths:
       - Administration
       operationId: patch_api_admin_users_userId
       summary: Update user or global administrator status
-      description: Administrator only.
+      description: Administrator only. Administrator accounts cannot be course members (409); promotion to administrator
+        requires removal of all current enrollments first (409).
       parameters:
       - $ref: '#/components/parameters/userId'
       security:
@@ -724,7 +725,8 @@ paths:
       - Administration
       operationId: post_api_admin_courses_courseId_enrollments
       summary: Enroll user with course role
-      description: Administrator only.
+      description: Administrator only. Administrator accounts cannot be course members (409); promotion to administrator
+        requires removal of all current enrollments first (409).
       parameters:
       - $ref: '#/components/parameters/courseId'
       security:
@@ -791,7 +793,9 @@ paths:
       - Administration
       operationId: bulk_add_api_admin_course_enrollments
       summary: Enroll multiple users with individual course roles
-      description: Administrator only; the course must be active. The entire batch succeeds or rolls back, and authored content is preserved.
+      description: Administrator only; the course must be active. The entire batch succeeds or rolls back, and authored
+        content is preserved. Administrator accounts cannot be course members (409); promotion to administrator requires
+        removal of all current enrollments first (409).
       parameters:
       - $ref: '#/components/parameters/courseId'
       security:
@@ -840,7 +844,8 @@ paths:
               schema:
                 $ref: '#/components/schemas/Error'
         '409':
-          description: Course is archived, a user is inactive, or a membership already exists; no memberships were added.
+          description: Course is archived, a user is inactive, or a membership already exists; no memberships were
+            added.
           content:
             application/json:
               schema:
@@ -858,7 +863,9 @@ paths:
       - Administration
       operationId: bulk_remove_api_admin_course_enrollments
       summary: Remove multiple course enrollments
-      description: Administrator only; the course must be active. The entire batch succeeds or rolls back, and authored content is preserved.
+      description: Administrator only; the course must be active. The entire batch succeeds or rolls back, and authored
+        content is preserved. Administrator accounts cannot be course members (409); promotion to administrator requires
+        removal of all current enrollments first (409).
       parameters:
       - $ref: '#/components/parameters/courseId'
       security:
@@ -919,7 +926,8 @@ paths:
       - Administration
       operationId: patch_api_admin_courses_courseId_enrollments_userId
       summary: Change course role
-      description: Administrator only.
+      description: Administrator only. Administrator accounts cannot be course members (409); promotion to administrator
+        requires removal of all current enrollments first (409).
       parameters:
       - $ref: '#/components/parameters/courseId'
       - $ref: '#/components/parameters/userId'
@@ -1142,11 +1150,12 @@ paths:
       - Courses
       operationId: get_api_courses_courseId_dashboard
       summary: Get course dashboard summary
-      description: >-
-        Returns up to five recent announcements, upcoming assessments, and recent resources from one course snapshot.
-        Students see permitted content and their own submission status; instructors and administrators also see hidden course materials,
-        assessment drafts, management permissions, and active assessment submission rates.
-        Other users' private notes, answer keys, answers, grades, and storage keys are omitted; archived dashboards are administrator-only and read-only.
+      description: Returns up to five recent announcements, upcoming assessments, and recent resources from one course
+        snapshot. Students see permitted content and their own submission status; instructors and administrators also
+        see hidden course materials, assessment drafts, management permissions, and active assessment submission rates.
+        Other users' private notes, answer keys, answers, grades, and storage keys are omitted; archived dashboards
+        are administrator-only and read-only. Administrator dashboards always have readOnly=true, role=null, and all
+        mutation permissions false, even for legacy enrolled accounts.
       parameters:
       - $ref: '#/components/parameters/courseId'
       security:
@@ -1200,8 +1209,9 @@ paths:
       tags:
       - Announcements
       operationId: get_api_courses_courseId_announcements
-      summary: "List announcements"
-      description: Lists visible announcements for students and all announcements for instructors or administrators. Results are ordered by createdAt descending, then ID descending; X-Next-Cursor is omitted on the last page.
+      summary: List announcements
+      description: Lists visible announcements for students and all announcements for instructors or administrators.
+        Results are ordered by createdAt descending, then ID descending; X-Next-Cursor is omitted on the last page.
       parameters:
       - $ref: '#/components/parameters/courseId'
       - name: limit
@@ -1218,8 +1228,9 @@ paths:
         required: false
         schema:
           type: string
-          pattern: '^[1-9][0-9]{0,9}$'
-        description: Last returned announcement ID from X-Next-Cursor; a deleted, hidden, or cross-course cursor returns 400.
+          pattern: ^[1-9][0-9]{0,9}$
+        description: Last returned announcement ID from X-Next-Cursor; a deleted, hidden, or cross-course cursor returns
+          400.
       security:
       - sessionCookie: []
       responses:
@@ -1260,7 +1271,6 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
-
         '500':
           description: Unexpected error; logged by the server.
           content:
@@ -1272,8 +1282,10 @@ paths:
       tags:
       - Announcements
       operationId: post_api_courses_courseId_announcements
-      summary: "Publish announcement"
-      description: Requires a course instructor or administrator and an active course; archived courses reject writes with 409.
+      summary: Publish announcement
+      description: Requires a course instructor and an active course; archived courses reject writes with 409. Administrator
+        accounts are read-only on all course APIs; these writes return 403 Forbidden for administrators, including
+        legacy enrolled accounts.
       parameters:
       - $ref: '#/components/parameters/courseId'
       security:
@@ -1321,7 +1333,6 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
-
         '500':
           description: Unexpected error; logged by the server.
           content:
@@ -1334,7 +1345,7 @@ paths:
       tags:
       - Announcements
       operationId: get_api_courses_courseId_announcements_announcementId
-      summary: "Get announcement"
+      summary: Get announcement
       description: Returns one course-scoped announcement; hidden announcements return 404 for students.
       parameters:
       - $ref: '#/components/parameters/courseId'
@@ -1372,7 +1383,6 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
-
         '500':
           description: Unexpected error; logged by the server.
           content:
@@ -1384,8 +1394,10 @@ paths:
       tags:
       - Announcements
       operationId: patch_api_courses_courseId_announcements_announcementId
-      summary: "Edit announcement"
-      description: Requires a course instructor or administrator and an active course; archived courses reject writes with 409.
+      summary: Edit announcement
+      description: Requires a course instructor and an active course; archived courses reject writes with 409. Administrator
+        accounts are read-only on all course APIs; these writes return 403 Forbidden for administrators, including
+        legacy enrolled accounts.
       parameters:
       - $ref: '#/components/parameters/courseId'
       - $ref: '#/components/parameters/announcementId'
@@ -1428,14 +1440,12 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
-
         '409':
           description: Course is archived; reactivate before changing announcements.
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
-
         '500':
           description: Unexpected error; logged by the server.
           content:
@@ -1447,8 +1457,10 @@ paths:
       tags:
       - Announcements
       operationId: delete_api_courses_courseId_announcements_announcementId
-      summary: "Delete announcement"
-      description: Requires a course instructor or administrator and an active course; archived courses reject writes with 409.
+      summary: Delete announcement
+      description: Requires a course instructor and an active course; archived courses reject writes with 409. Administrator
+        accounts are read-only on all course APIs; these writes return 403 Forbidden for administrators, including
+        legacy enrolled accounts.
       parameters:
       - $ref: '#/components/parameters/courseId'
       - $ref: '#/components/parameters/announcementId'
@@ -1481,14 +1493,12 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
-
         '409':
           description: Course is archived; reactivate before changing announcements.
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
-
         '500':
           description: Unexpected error; logged by the server.
           content:
@@ -1614,6 +1624,8 @@ paths:
                 $ref: '#/components/schemas/Error'
       description: Requires course access; students see published assignments only. Instructors/admins manage assignments
         in active courses. No pagination. Deletion returns 409 if submissions exist. gradesVisible defaults to false.
+        Administrator accounts are read-only on all course APIs; these writes return 403 Forbidden for administrators,
+        including legacy enrolled accounts.
   /api/courses/{courseId}/assignments/{assignmentId}:
     get:
       x-implementation-status: implemented
@@ -1733,7 +1745,8 @@ paths:
                 $ref: '#/components/schemas/Error'
       description: Requires course access; students see published assignments only. Instructors/admins manage assignments
         in active courses. No pagination. Deletion returns 409 if submissions exist. Set gradesVisible=true to release
-        stored marks or false to hide them again; omitted settings remain unchanged.
+        stored marks or false to hide them again; omitted settings remain unchanged. Administrator accounts are read-only
+        on all course APIs; these writes return 403 Forbidden for administrators, including legacy enrolled accounts.
     delete:
       x-implementation-status: implemented
       tags:
@@ -1785,7 +1798,8 @@ paths:
               schema:
                 $ref: '#/components/schemas/Error'
       description: Requires course access; students see published assignments only. Instructors/admins manage assignments
-        in active courses. No pagination. Deletion returns 409 if submissions exist.
+        in active courses. No pagination. Deletion returns 409 if submissions exist. Administrator accounts are read-only
+        on all course APIs; these writes return 403 Forbidden for administrators, including legacy enrolled accounts.
   /api/courses/{courseId}/assignments/{assignmentId}/submissions:
     post:
       x-implementation-status: implemented
@@ -1797,7 +1811,8 @@ paths:
         an active course, and a published assignment. Uploads at or after dueAt return 409; null dueAt has no deadline.
         Replacement requires allowResubmission=true and retains the submission ID while replacing the file and submittedAt.
         Concurrent requests serialize per student and assignment; the last committed allowed upload wins. Identity
-        comes from the session.
+        comes from the session. Administrator accounts are read-only on all course APIs; these writes return 403 Forbidden
+        for administrators, including legacy enrolled accounts.
       parameters:
       - $ref: '#/components/parameters/courseId'
       - $ref: '#/components/parameters/assignmentId'
@@ -2088,9 +2103,10 @@ paths:
       - Assignments
       operationId: patch_api_courses_courseId_assignments_assignmentId_submissions_submissionId
       summary: Grade current assignment submission
-      description: Requires instructor or admin access to an active course. Saves a nonnegative finite mark, or null
-        to clear it. Does not change submittedAt. Reuploads clear the previous mark. Instructors always see marks;
-        students see them only when assignment gradesVisible is true.
+      description: Requires instructor access to an active course. Saves a nonnegative finite mark, or null to clear
+        it. Does not change submittedAt. Reuploads clear the previous mark. Instructors always see marks; students
+        see them only when assignment gradesVisible is true. Administrator accounts are read-only on all course APIs;
+        these writes return 403 Forbidden for administrators, including legacy enrolled accounts.
       parameters:
       - $ref: '#/components/parameters/courseId'
       - $ref: '#/components/parameters/assignmentId'
@@ -2202,14 +2218,14 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
-      description: Session and course access required. Managers create/edit quizzes, questions, and grades in active
-        courses. Students see visible published/closed quizzes; only enrolled students submit. Answer writes require
-        published, visible, opened quizzes before dueAt; null dates are unbounded. Drafts reserve one attempt and
-        repeat saves reuse it. Finalized answers are immutable, archived as S3 JSON, and bounded by maxAttempts. Questions
-        and quiz deletion are blocked after any draft or finalized attempt. Managers see latest finalized submissions
-        per student with identity; owners see their own history. Scores, question marks, feedback and graded status
-        stay hidden until showResults; answer keys are always manager-only. See README for route-specific payloads
-        and permissions.
+      description: Session and course access required. Instructors create/edit quizzes, questions, and grades in active
+        courses; administrator access is read-only. Students see visible published/closed quizzes; only enrolled students
+        submit. Answer writes require published, visible, opened quizzes before dueAt; null dates are unbounded. Drafts
+        reserve one attempt and repeat saves reuse it. Finalized answers are immutable, archived as S3 JSON, and bounded
+        by maxAttempts. Questions and quiz deletion are blocked after any draft or finalized attempt. Managers see
+        latest finalized submissions per student with identity; owners see their own history. Scores, question marks,
+        feedback and graded status stay hidden until showResults; answer keys are always manager-only. See README
+        for route-specific payloads and permissions.
     post:
       x-implementation-status: implemented
       tags:
@@ -2263,14 +2279,15 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
-      description: Session and course access required. Managers create/edit quizzes, questions, and grades in active
-        courses. Students see visible published/closed quizzes; only enrolled students submit. Answer writes require
-        published, visible, opened quizzes before dueAt; null dates are unbounded. Drafts reserve one attempt and
-        repeat saves reuse it. Finalized answers are immutable, archived as S3 JSON, and bounded by maxAttempts. Questions
-        and quiz deletion are blocked after any draft or finalized attempt. Managers see latest finalized submissions
-        per student with identity; owners see their own history. Scores, question marks, feedback and graded status
-        stay hidden until showResults; answer keys are always manager-only. See README for route-specific payloads
-        and permissions.
+      description: Session and course access required. Instructors create/edit quizzes, questions, and grades in active
+        courses; administrator access is read-only. Students see visible published/closed quizzes; only enrolled students
+        submit. Answer writes require published, visible, opened quizzes before dueAt; null dates are unbounded. Drafts
+        reserve one attempt and repeat saves reuse it. Finalized answers are immutable, archived as S3 JSON, and bounded
+        by maxAttempts. Questions and quiz deletion are blocked after any draft or finalized attempt. Managers see
+        latest finalized submissions per student with identity; owners see their own history. Scores, question marks,
+        feedback and graded status stay hidden until showResults; answer keys are always manager-only. See README
+        for route-specific payloads and permissions. Administrator accounts are read-only on all course APIs; these
+        writes return 403 Forbidden for administrators, including legacy enrolled accounts.
       requestBody:
         required: true
         content:
@@ -2332,14 +2349,14 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
-      description: Session and course access required. Managers create/edit quizzes, questions, and grades in active
-        courses. Students see visible published/closed quizzes; only enrolled students submit. Answer writes require
-        published, visible, opened quizzes before dueAt; null dates are unbounded. Drafts reserve one attempt and
-        repeat saves reuse it. Finalized answers are immutable, archived as S3 JSON, and bounded by maxAttempts. Questions
-        and quiz deletion are blocked after any draft or finalized attempt. Managers see latest finalized submissions
-        per student with identity; owners see their own history. Scores, question marks, feedback and graded status
-        stay hidden until showResults; answer keys are always manager-only. See README for route-specific payloads
-        and permissions.
+      description: Session and course access required. Instructors create/edit quizzes, questions, and grades in active
+        courses; administrator access is read-only. Students see visible published/closed quizzes; only enrolled students
+        submit. Answer writes require published, visible, opened quizzes before dueAt; null dates are unbounded. Drafts
+        reserve one attempt and repeat saves reuse it. Finalized answers are immutable, archived as S3 JSON, and bounded
+        by maxAttempts. Questions and quiz deletion are blocked after any draft or finalized attempt. Managers see
+        latest finalized submissions per student with identity; owners see their own history. Scores, question marks,
+        feedback and graded status stay hidden until showResults; answer keys are always manager-only. See README
+        for route-specific payloads and permissions.
     patch:
       x-implementation-status: implemented
       tags:
@@ -2394,14 +2411,15 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
-      description: Session and course access required. Managers create/edit quizzes, questions, and grades in active
-        courses. Students see visible published/closed quizzes; only enrolled students submit. Answer writes require
-        published, visible, opened quizzes before dueAt; null dates are unbounded. Drafts reserve one attempt and
-        repeat saves reuse it. Finalized answers are immutable, archived as S3 JSON, and bounded by maxAttempts. Questions
-        and quiz deletion are blocked after any draft or finalized attempt. Managers see latest finalized submissions
-        per student with identity; owners see their own history. Scores, question marks, feedback and graded status
-        stay hidden until showResults; answer keys are always manager-only. See README for route-specific payloads
-        and permissions.
+      description: Session and course access required. Instructors create/edit quizzes, questions, and grades in active
+        courses; administrator access is read-only. Students see visible published/closed quizzes; only enrolled students
+        submit. Answer writes require published, visible, opened quizzes before dueAt; null dates are unbounded. Drafts
+        reserve one attempt and repeat saves reuse it. Finalized answers are immutable, archived as S3 JSON, and bounded
+        by maxAttempts. Questions and quiz deletion are blocked after any draft or finalized attempt. Managers see
+        latest finalized submissions per student with identity; owners see their own history. Scores, question marks,
+        feedback and graded status stay hidden until showResults; answer keys are always manager-only. See README
+        for route-specific payloads and permissions. Administrator accounts are read-only on all course APIs; these
+        writes return 403 Forbidden for administrators, including legacy enrolled accounts.
       requestBody:
         required: true
         content:
@@ -2458,14 +2476,15 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
-      description: Session and course access required. Managers create/edit quizzes, questions, and grades in active
-        courses. Students see visible published/closed quizzes; only enrolled students submit. Answer writes require
-        published, visible, opened quizzes before dueAt; null dates are unbounded. Drafts reserve one attempt and
-        repeat saves reuse it. Finalized answers are immutable, archived as S3 JSON, and bounded by maxAttempts. Questions
-        and quiz deletion are blocked after any draft or finalized attempt. Managers see latest finalized submissions
-        per student with identity; owners see their own history. Scores, question marks, feedback and graded status
-        stay hidden until showResults; answer keys are always manager-only. See README for route-specific payloads
-        and permissions.
+      description: Session and course access required. Instructors create/edit quizzes, questions, and grades in active
+        courses; administrator access is read-only. Students see visible published/closed quizzes; only enrolled students
+        submit. Answer writes require published, visible, opened quizzes before dueAt; null dates are unbounded. Drafts
+        reserve one attempt and repeat saves reuse it. Finalized answers are immutable, archived as S3 JSON, and bounded
+        by maxAttempts. Questions and quiz deletion are blocked after any draft or finalized attempt. Managers see
+        latest finalized submissions per student with identity; owners see their own history. Scores, question marks,
+        feedback and graded status stay hidden until showResults; answer keys are always manager-only. See README
+        for route-specific payloads and permissions. Administrator accounts are read-only on all course APIs; these
+        writes return 403 Forbidden for administrators, including legacy enrolled accounts.
   /api/courses/{courseId}/quizzes/{quizId}/questions:
     get:
       x-implementation-status: implemented
@@ -2523,14 +2542,14 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
-      description: Session and course access required. Managers create/edit quizzes, questions, and grades in active
-        courses. Students see visible published/closed quizzes; only enrolled students submit. Answer writes require
-        published, visible, opened quizzes before dueAt; null dates are unbounded. Drafts reserve one attempt and
-        repeat saves reuse it. Finalized answers are immutable, archived as S3 JSON, and bounded by maxAttempts. Questions
-        and quiz deletion are blocked after any draft or finalized attempt. Managers see latest finalized submissions
-        per student with identity; owners see their own history. Scores, question marks, feedback and graded status
-        stay hidden until showResults; answer keys are always manager-only. See README for route-specific payloads
-        and permissions.
+      description: Session and course access required. Instructors create/edit quizzes, questions, and grades in active
+        courses; administrator access is read-only. Students see visible published/closed quizzes; only enrolled students
+        submit. Answer writes require published, visible, opened quizzes before dueAt; null dates are unbounded. Drafts
+        reserve one attempt and repeat saves reuse it. Finalized answers are immutable, archived as S3 JSON, and bounded
+        by maxAttempts. Questions and quiz deletion are blocked after any draft or finalized attempt. Managers see
+        latest finalized submissions per student with identity; owners see their own history. Scores, question marks,
+        feedback and graded status stay hidden until showResults; answer keys are always manager-only. See README
+        for route-specific payloads and permissions.
     post:
       x-implementation-status: implemented
       tags:
@@ -2585,14 +2604,15 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
-      description: Session and course access required. Managers create/edit quizzes, questions, and grades in active
-        courses. Students see visible published/closed quizzes; only enrolled students submit. Answer writes require
-        published, visible, opened quizzes before dueAt; null dates are unbounded. Drafts reserve one attempt and
-        repeat saves reuse it. Finalized answers are immutable, archived as S3 JSON, and bounded by maxAttempts. Questions
-        and quiz deletion are blocked after any draft or finalized attempt. Managers see latest finalized submissions
-        per student with identity; owners see their own history. Scores, question marks, feedback and graded status
-        stay hidden until showResults; answer keys are always manager-only. See README for route-specific payloads
-        and permissions.
+      description: Session and course access required. Instructors create/edit quizzes, questions, and grades in active
+        courses; administrator access is read-only. Students see visible published/closed quizzes; only enrolled students
+        submit. Answer writes require published, visible, opened quizzes before dueAt; null dates are unbounded. Drafts
+        reserve one attempt and repeat saves reuse it. Finalized answers are immutable, archived as S3 JSON, and bounded
+        by maxAttempts. Questions and quiz deletion are blocked after any draft or finalized attempt. Managers see
+        latest finalized submissions per student with identity; owners see their own history. Scores, question marks,
+        feedback and graded status stay hidden until showResults; answer keys are always manager-only. See README
+        for route-specific payloads and permissions. Administrator accounts are read-only on all course APIs; these
+        writes return 403 Forbidden for administrators, including legacy enrolled accounts.
       requestBody:
         required: true
         content:
@@ -2655,14 +2675,15 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
-      description: Session and course access required. Managers create/edit quizzes, questions, and grades in active
-        courses. Students see visible published/closed quizzes; only enrolled students submit. Answer writes require
-        published, visible, opened quizzes before dueAt; null dates are unbounded. Drafts reserve one attempt and
-        repeat saves reuse it. Finalized answers are immutable, archived as S3 JSON, and bounded by maxAttempts. Questions
-        and quiz deletion are blocked after any draft or finalized attempt. Managers see latest finalized submissions
-        per student with identity; owners see their own history. Scores, question marks, feedback and graded status
-        stay hidden until showResults; answer keys are always manager-only. See README for route-specific payloads
-        and permissions.
+      description: Session and course access required. Instructors create/edit quizzes, questions, and grades in active
+        courses; administrator access is read-only. Students see visible published/closed quizzes; only enrolled students
+        submit. Answer writes require published, visible, opened quizzes before dueAt; null dates are unbounded. Drafts
+        reserve one attempt and repeat saves reuse it. Finalized answers are immutable, archived as S3 JSON, and bounded
+        by maxAttempts. Questions and quiz deletion are blocked after any draft or finalized attempt. Managers see
+        latest finalized submissions per student with identity; owners see their own history. Scores, question marks,
+        feedback and graded status stay hidden until showResults; answer keys are always manager-only. See README
+        for route-specific payloads and permissions. Administrator accounts are read-only on all course APIs; these
+        writes return 403 Forbidden for administrators, including legacy enrolled accounts.
       requestBody:
         required: true
         content:
@@ -2720,14 +2741,15 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
-      description: Session and course access required. Managers create/edit quizzes, questions, and grades in active
-        courses. Students see visible published/closed quizzes; only enrolled students submit. Answer writes require
-        published, visible, opened quizzes before dueAt; null dates are unbounded. Drafts reserve one attempt and
-        repeat saves reuse it. Finalized answers are immutable, archived as S3 JSON, and bounded by maxAttempts. Questions
-        and quiz deletion are blocked after any draft or finalized attempt. Managers see latest finalized submissions
-        per student with identity; owners see their own history. Scores, question marks, feedback and graded status
-        stay hidden until showResults; answer keys are always manager-only. See README for route-specific payloads
-        and permissions.
+      description: Session and course access required. Instructors create/edit quizzes, questions, and grades in active
+        courses; administrator access is read-only. Students see visible published/closed quizzes; only enrolled students
+        submit. Answer writes require published, visible, opened quizzes before dueAt; null dates are unbounded. Drafts
+        reserve one attempt and repeat saves reuse it. Finalized answers are immutable, archived as S3 JSON, and bounded
+        by maxAttempts. Questions and quiz deletion are blocked after any draft or finalized attempt. Managers see
+        latest finalized submissions per student with identity; owners see their own history. Scores, question marks,
+        feedback and graded status stay hidden until showResults; answer keys are always manager-only. See README
+        for route-specific payloads and permissions. Administrator accounts are read-only on all course APIs; these
+        writes return 403 Forbidden for administrators, including legacy enrolled accounts.
   /api/courses/{courseId}/quizzes/{quizId}/draft:
     get:
       x-implementation-status: implemented
@@ -2788,14 +2810,14 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
-      description: Session and course access required. Managers create/edit quizzes, questions, and grades in active
-        courses. Students see visible published/closed quizzes; only enrolled students submit. Answer writes require
-        published, visible, opened quizzes before dueAt; null dates are unbounded. Drafts reserve one attempt and
-        repeat saves reuse it. Finalized answers are immutable, archived as S3 JSON, and bounded by maxAttempts. Questions
-        and quiz deletion are blocked after any draft or finalized attempt. Managers see latest finalized submissions
-        per student with identity; owners see their own history. Scores, question marks, feedback and graded status
-        stay hidden until showResults; answer keys are always manager-only. See README for route-specific payloads
-        and permissions.
+      description: Session and course access required. Instructors create/edit quizzes, questions, and grades in active
+        courses; administrator access is read-only. Students see visible published/closed quizzes; only enrolled students
+        submit. Answer writes require published, visible, opened quizzes before dueAt; null dates are unbounded. Drafts
+        reserve one attempt and repeat saves reuse it. Finalized answers are immutable, archived as S3 JSON, and bounded
+        by maxAttempts. Questions and quiz deletion are blocked after any draft or finalized attempt. Managers see
+        latest finalized submissions per student with identity; owners see their own history. Scores, question marks,
+        feedback and graded status stay hidden until showResults; answer keys are always manager-only. See README
+        for route-specific payloads and permissions.
     put:
       x-implementation-status: implemented
       tags:
@@ -2850,14 +2872,15 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
-      description: Session and course access required. Managers create/edit quizzes, questions, and grades in active
-        courses. Students see visible published/closed quizzes; only enrolled students submit. Answer writes require
-        published, visible, opened quizzes before dueAt; null dates are unbounded. Drafts reserve one attempt and
-        repeat saves reuse it. Finalized answers are immutable, archived as S3 JSON, and bounded by maxAttempts. Questions
-        and quiz deletion are blocked after any draft or finalized attempt. Managers see latest finalized submissions
-        per student with identity; owners see their own history. Scores, question marks, feedback and graded status
-        stay hidden until showResults; answer keys are always manager-only. See README for route-specific payloads
-        and permissions.
+      description: Session and course access required. Instructors create/edit quizzes, questions, and grades in active
+        courses; administrator access is read-only. Students see visible published/closed quizzes; only enrolled students
+        submit. Answer writes require published, visible, opened quizzes before dueAt; null dates are unbounded. Drafts
+        reserve one attempt and repeat saves reuse it. Finalized answers are immutable, archived as S3 JSON, and bounded
+        by maxAttempts. Questions and quiz deletion are blocked after any draft or finalized attempt. Managers see
+        latest finalized submissions per student with identity; owners see their own history. Scores, question marks,
+        feedback and graded status stay hidden until showResults; answer keys are always manager-only. See README
+        for route-specific payloads and permissions. Administrator accounts are read-only on all course APIs; these
+        writes return 403 Forbidden for administrators, including legacy enrolled accounts.
       requestBody:
         required: true
         content:
@@ -2919,14 +2942,14 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
-      description: Session and course access required. Managers create/edit quizzes, questions, and grades in active
-        courses. Students see visible published/closed quizzes; only enrolled students submit. Answer writes require
-        published, visible, opened quizzes before dueAt; null dates are unbounded. Drafts reserve one attempt and
-        repeat saves reuse it. Finalized answers are immutable, archived as S3 JSON, and bounded by maxAttempts. Questions
-        and quiz deletion are blocked after any draft or finalized attempt. Managers see latest finalized submissions
-        per student with identity; owners see their own history. Scores, question marks, feedback and graded status
-        stay hidden until showResults; answer keys are always manager-only. See README for route-specific payloads
-        and permissions.
+      description: Session and course access required. Instructors create/edit quizzes, questions, and grades in active
+        courses; administrator access is read-only. Students see visible published/closed quizzes; only enrolled students
+        submit. Answer writes require published, visible, opened quizzes before dueAt; null dates are unbounded. Drafts
+        reserve one attempt and repeat saves reuse it. Finalized answers are immutable, archived as S3 JSON, and bounded
+        by maxAttempts. Questions and quiz deletion are blocked after any draft or finalized attempt. Managers see
+        latest finalized submissions per student with identity; owners see their own history. Scores, question marks,
+        feedback and graded status stay hidden until showResults; answer keys are always manager-only. See README
+        for route-specific payloads and permissions.
   /api/courses/{courseId}/quizzes/{quizId}/submissions:
     get:
       x-implementation-status: implemented
@@ -2984,14 +3007,14 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
-      description: Session and course access required. Managers create/edit quizzes, questions, and grades in active
-        courses. Students see visible published/closed quizzes; only enrolled students submit. Answer writes require
-        published, visible, opened quizzes before dueAt; null dates are unbounded. Drafts reserve one attempt and
-        repeat saves reuse it. Finalized answers are immutable, archived as S3 JSON, and bounded by maxAttempts. Questions
-        and quiz deletion are blocked after any draft or finalized attempt. Managers see latest finalized submissions
-        per student with identity; owners see their own history. Scores, question marks, feedback and graded status
-        stay hidden until showResults; answer keys are always manager-only. See README for route-specific payloads
-        and permissions.
+      description: Session and course access required. Instructors create/edit quizzes, questions, and grades in active
+        courses; administrator access is read-only. Students see visible published/closed quizzes; only enrolled students
+        submit. Answer writes require published, visible, opened quizzes before dueAt; null dates are unbounded. Drafts
+        reserve one attempt and repeat saves reuse it. Finalized answers are immutable, archived as S3 JSON, and bounded
+        by maxAttempts. Questions and quiz deletion are blocked after any draft or finalized attempt. Managers see
+        latest finalized submissions per student with identity; owners see their own history. Scores, question marks,
+        feedback and graded status stay hidden until showResults; answer keys are always manager-only. See README
+        for route-specific payloads and permissions.
     post:
       x-implementation-status: implemented
       tags:
@@ -3046,14 +3069,15 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
-      description: Session and course access required. Managers create/edit quizzes, questions, and grades in active
-        courses. Students see visible published/closed quizzes; only enrolled students submit. Answer writes require
-        published, visible, opened quizzes before dueAt; null dates are unbounded. Drafts reserve one attempt and
-        repeat saves reuse it. Finalized answers are immutable, archived as S3 JSON, and bounded by maxAttempts. Questions
-        and quiz deletion are blocked after any draft or finalized attempt. Managers see latest finalized submissions
-        per student with identity; owners see their own history. Scores, question marks, feedback and graded status
-        stay hidden until showResults; answer keys are always manager-only. See README for route-specific payloads
-        and permissions.
+      description: Session and course access required. Instructors create/edit quizzes, questions, and grades in active
+        courses; administrator access is read-only. Students see visible published/closed quizzes; only enrolled students
+        submit. Answer writes require published, visible, opened quizzes before dueAt; null dates are unbounded. Drafts
+        reserve one attempt and repeat saves reuse it. Finalized answers are immutable, archived as S3 JSON, and bounded
+        by maxAttempts. Questions and quiz deletion are blocked after any draft or finalized attempt. Managers see
+        latest finalized submissions per student with identity; owners see their own history. Scores, question marks,
+        feedback and graded status stay hidden until showResults; answer keys are always manager-only. See README
+        for route-specific payloads and permissions. Administrator accounts are read-only on all course APIs; these
+        writes return 403 Forbidden for administrators, including legacy enrolled accounts.
       requestBody:
         required: true
         content:
@@ -3117,14 +3141,14 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
-      description: Session and course access required. Managers create/edit quizzes, questions, and grades in active
-        courses. Students see visible published/closed quizzes; only enrolled students submit. Answer writes require
-        published, visible, opened quizzes before dueAt; null dates are unbounded. Drafts reserve one attempt and
-        repeat saves reuse it. Finalized answers are immutable, archived as S3 JSON, and bounded by maxAttempts. Questions
-        and quiz deletion are blocked after any draft or finalized attempt. Managers see latest finalized submissions
-        per student with identity; owners see their own history. Scores, question marks, feedback and graded status
-        stay hidden until showResults; answer keys are always manager-only. See README for route-specific payloads
-        and permissions.
+      description: Session and course access required. Instructors create/edit quizzes, questions, and grades in active
+        courses; administrator access is read-only. Students see visible published/closed quizzes; only enrolled students
+        submit. Answer writes require published, visible, opened quizzes before dueAt; null dates are unbounded. Drafts
+        reserve one attempt and repeat saves reuse it. Finalized answers are immutable, archived as S3 JSON, and bounded
+        by maxAttempts. Questions and quiz deletion are blocked after any draft or finalized attempt. Managers see
+        latest finalized submissions per student with identity; owners see their own history. Scores, question marks,
+        feedback and graded status stay hidden until showResults; answer keys are always manager-only. See README
+        for route-specific payloads and permissions.
   /api/courses/{courseId}/quizzes/{quizId}/submissions/{submissionId}:
     get:
       x-implementation-status: implemented
@@ -3181,14 +3205,14 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
-      description: Session and course access required. Managers create/edit quizzes, questions, and grades in active
-        courses. Students see visible published/closed quizzes; only enrolled students submit. Answer writes require
-        published, visible, opened quizzes before dueAt; null dates are unbounded. Drafts reserve one attempt and
-        repeat saves reuse it. Finalized answers are immutable, archived as S3 JSON, and bounded by maxAttempts. Questions
-        and quiz deletion are blocked after any draft or finalized attempt. Managers see latest finalized submissions
-        per student with identity; owners see their own history. Scores, question marks, feedback and graded status
-        stay hidden until showResults; answer keys are always manager-only. See README for route-specific payloads
-        and permissions.
+      description: Session and course access required. Instructors create/edit quizzes, questions, and grades in active
+        courses; administrator access is read-only. Students see visible published/closed quizzes; only enrolled students
+        submit. Answer writes require published, visible, opened quizzes before dueAt; null dates are unbounded. Drafts
+        reserve one attempt and repeat saves reuse it. Finalized answers are immutable, archived as S3 JSON, and bounded
+        by maxAttempts. Questions and quiz deletion are blocked after any draft or finalized attempt. Managers see
+        latest finalized submissions per student with identity; owners see their own history. Scores, question marks,
+        feedback and graded status stay hidden until showResults; answer keys are always manager-only. See README
+        for route-specific payloads and permissions.
     patch:
       x-implementation-status: implemented
       tags:
@@ -3244,14 +3268,15 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
-      description: Session and course access required. Managers create/edit quizzes, questions, and grades in active
-        courses. Students see visible published/closed quizzes; only enrolled students submit. Answer writes require
-        published, visible, opened quizzes before dueAt; null dates are unbounded. Drafts reserve one attempt and
-        repeat saves reuse it. Finalized answers are immutable, archived as S3 JSON, and bounded by maxAttempts. Questions
-        and quiz deletion are blocked after any draft or finalized attempt. Managers see latest finalized submissions
-        per student with identity; owners see their own history. Scores, question marks, feedback and graded status
-        stay hidden until showResults; answer keys are always manager-only. See README for route-specific payloads
-        and permissions.
+      description: Session and course access required. Instructors create/edit quizzes, questions, and grades in active
+        courses; administrator access is read-only. Students see visible published/closed quizzes; only enrolled students
+        submit. Answer writes require published, visible, opened quizzes before dueAt; null dates are unbounded. Drafts
+        reserve one attempt and repeat saves reuse it. Finalized answers are immutable, archived as S3 JSON, and bounded
+        by maxAttempts. Questions and quiz deletion are blocked after any draft or finalized attempt. Managers see
+        latest finalized submissions per student with identity; owners see their own history. Scores, question marks,
+        feedback and graded status stay hidden until showResults; answer keys are always manager-only. See README
+        for route-specific payloads and permissions. Administrator accounts are read-only on all course APIs; these
+        writes return 403 Forbidden for administrators, including legacy enrolled accounts.
       requestBody:
         required: true
         content:
@@ -3314,14 +3339,15 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
-      description: Session and course access required. Managers create/edit quizzes, questions, and grades in active
-        courses. Students see visible published/closed quizzes; only enrolled students submit. Answer writes require
-        published, visible, opened quizzes before dueAt; null dates are unbounded. Drafts reserve one attempt and
-        repeat saves reuse it. Finalized answers are immutable, archived as S3 JSON, and bounded by maxAttempts. Questions
-        and quiz deletion are blocked after any draft or finalized attempt. Managers see latest finalized submissions
-        per student with identity; owners see their own history. Scores, question marks, feedback and graded status
-        stay hidden until showResults; answer keys are always manager-only. See README for route-specific payloads
-        and permissions.
+      description: Session and course access required. Instructors create/edit quizzes, questions, and grades in active
+        courses; administrator access is read-only. Students see visible published/closed quizzes; only enrolled students
+        submit. Answer writes require published, visible, opened quizzes before dueAt; null dates are unbounded. Drafts
+        reserve one attempt and repeat saves reuse it. Finalized answers are immutable, archived as S3 JSON, and bounded
+        by maxAttempts. Questions and quiz deletion are blocked after any draft or finalized attempt. Managers see
+        latest finalized submissions per student with identity; owners see their own history. Scores, question marks,
+        feedback and graded status stay hidden until showResults; answer keys are always manager-only. See README
+        for route-specific payloads and permissions. Administrator accounts are read-only on all course APIs; these
+        writes return 403 Forbidden for administrators, including legacy enrolled accounts.
       requestBody:
         required: true
         content:
@@ -3442,9 +3468,10 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
-      description: Instructor/admin only in an active course. Merge partial per-question manual marks (0 through question
+      description: Instructor only in an active course. Merge partial per-question manual marks (0 through question
         points) with automatic grading. Aggregate score stays null until all questions are graded. Feedback is optional;
-        showResults releases student marks.
+        showResults releases student marks. Administrator accounts are read-only on all course APIs; these writes
+        return 403 Forbidden for administrators, including legacy enrolled accounts.
       requestBody:
         required: true
         content:
@@ -3457,8 +3484,9 @@ paths:
       tags:
       - Resources
       operationId: get_api_courses_courseId_resources
-      summary: "List course resources"
-      description: List all matching resources without pagination; visible files and own private files are included, plus hidden instructor materials and assignment files for instructors or admins.
+      summary: List course resources
+      description: List all matching resources without pagination; visible files and own private files are included,
+        plus hidden instructor materials and assignment files for instructors or admins.
       parameters:
       - $ref: '#/components/parameters/courseId'
       - name: resourceType
@@ -3466,7 +3494,10 @@ paths:
         required: false
         schema:
           type: string
-          enum: [instructor_material, student_note, assignment_file]
+          enum:
+          - instructor_material
+          - student_note
+          - assignment_file
       security:
       - sessionCookie: []
       responses:
@@ -3507,8 +3538,11 @@ paths:
       tags:
       - Resources
       operationId: post_api_courses_courseId_resources
-      summary: "Upload PDF resource"
-      description: Upload one nonempty PDF up to 10 MB to S3 and create a resource and pending extraction job. Instructors and admins may upload instructor materials; students may upload student notes. The course must be active; PDF extraction is not implemented.
+      summary: Upload PDF resource
+      description: Upload one nonempty PDF up to 10 MB to S3 and create a resource and pending extraction job. Instructors
+        may upload instructor materials; students may upload student notes. The course must be active; The enabled
+        API-managed worker extracts text layers with unpdf; OCR is not implemented. Administrator accounts are read-only
+        on all course APIs; these writes return 403 Forbidden for administrators, including legacy enrolled accounts.
       parameters:
       - $ref: '#/components/parameters/courseId'
       security:
@@ -3579,15 +3613,19 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
-
   /api/courses/{courseId}/resources/search:
     get:
       x-implementation-status: implemented
       tags:
       - Resources
       operationId: get_api_courses_courseId_resources_search
-      summary: "Search PDF contents in course"
-      description: Search extracted page text for resources the current account can see. Matching pages include a short snippet. An empty result is 200 with [].
+      summary: Search PDF contents in course
+      description: Search authorized extracted PDF page text in this course using PostgreSQL English web-search syntax.
+        Requires course access; resource visibility matches resource listing, including own private notes and instructor-managed
+        hidden materials. q must be one nonempty trimmed string of at most 200 characters; duplicate q parameters
+        return 400. Returns resource metadata with plain-text page/snippet matches, at most five matching pages per
+        resource and 250 page hits overall, newest resource first with page order ascending. No pagination. Empty
+        matches return []. OCR is not implemented, so image-only PDFs without a text layer have no searchable text.
       parameters:
       - $ref: '#/components/parameters/courseId'
       - name: q
@@ -3595,6 +3633,8 @@ paths:
         required: true
         schema:
           type: string
+          minLength: 1
+          maxLength: 200
         description: Search keywords
       security:
       - sessionCookie: []
@@ -3631,14 +3671,21 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
   /api/courses/{courseId}/resources/{resourceId}:
     get:
       x-implementation-status: implemented
       tags:
       - Resources
       operationId: get_api_courses_courseId_resources_resourceId
-      summary: "Get resource and extraction status"
-      description: Return resource metadata and extraction status after checking course membership and resource visibility; admins may access archived courses.
+      summary: Get resource and extraction status
+      description: Return resource metadata and extraction status after checking course membership and resource visibility;
+        admins may access archived courses.
       parameters:
       - $ref: '#/components/parameters/courseId'
       - $ref: '#/components/parameters/resourceId'
@@ -3680,7 +3727,7 @@ paths:
       tags:
       - Resources
       operationId: patch_api_courses_courseId_resources_resourceId
-      summary: "[Planned] Update resource metadata or visibility"
+      summary: '[Planned] Update resource metadata or visibility'
       parameters:
       - $ref: '#/components/parameters/courseId'
       - $ref: '#/components/parameters/resourceId'
@@ -3733,13 +3780,18 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
+      description: ' Administrator accounts are read-only on all course APIs; these writes return 403 Forbidden for
+        administrators, including legacy enrolled accounts.'
     delete:
       x-implementation-status: implemented
       tags:
       - Resources
       operationId: delete_api_courses_courseId_resources_resourceId
-      summary: "Delete resource"
-      description: Delete a visible resource owned by the caller or managed by an instructor or admin, then delete its S3 object. The course must be active; private student notes remain restricted to their owner.
+      summary: Delete resource
+      description: Delete a visible resource owned by the caller or managed by an instructor, then delete its S3 object.
+        The course must be active; private student notes remain restricted to their owner. Administrator accounts
+        are read-only on all course APIs; these writes return 403 Forbidden for administrators, including legacy enrolled
+        accounts.
       parameters:
       - $ref: '#/components/parameters/courseId'
       - $ref: '#/components/parameters/resourceId'
@@ -3778,7 +3830,6 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
-
   /api/courses/{courseId}/resources/{resourceId}/preview:
     get:
       x-implementation-status: implemented
