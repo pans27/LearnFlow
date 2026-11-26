@@ -1,7 +1,8 @@
+import { fileURLToPath } from "node:url";
 import assert from "node:assert/strict";
 import { createServer } from "vite";
 const server = await createServer({
-  root: new URL("..", import.meta.url).pathname,
+  root: fileURLToPath(new URL("..", import.meta.url)),
   server: { middlewareMode: true, hmr: false, ws: false },
   optimizeDeps: { noDiscovery: true, include: [] },
   appType: "custom",

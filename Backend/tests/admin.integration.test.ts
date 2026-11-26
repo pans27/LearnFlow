@@ -275,6 +275,9 @@ test('admin API and single-schema database integrity', {
     assert.equal((await prisma.user.findUniqueOrThrow({ where: { id: learner.id } })).isAdmin, false);
     // An existing legacy membership never grants an administrator teaching permissions.
     await prisma.enrollment.create({ data: { courseId: course.id, userId: isolatedAdmin.id, role: 'instructor' } });
+    const legacyCourses = await fetch(`${origin}/api/courses`, { headers: { Cookie: cookie } });
+    assert.equal(legacyCourses.status, 200);
+    assert.ok((await legacyCourses.json()).every((item: { role: string | null }) => item.role === null));
     assert.equal((await request(`${enroll}/${isolatedAdmin.id}`, 'PATCH', { role: 'student' })).status, 409);
     for (const section of ['announcements', 'quizzes', 'assignments', 'resources']) {
       for (const [method, suffix] of [['POST', ''], ['PATCH', '/1'], ['DELETE', '/1']] as const) {
@@ -282,6 +285,7 @@ test('admin API and single-schema database integrity', {
           method, headers: { Cookie: cookie, 'Content-Type': 'application/json' }, body: '{}',
         });
         assert.equal(response.status, 403, `${method} ${section}`);
+        assert.deepEqual(await response.json(), { message: 'Forbidden' });
       }
       const response = await fetch(`${origin}/api/courses/${course.id}/${section}`, { headers: { Cookie: cookie } });
       assert.equal(response.status, 200);
@@ -294,6 +298,15 @@ test('admin API and single-schema database integrity', {
     assert.equal((await request(`${enroll}/${isolatedAdmin.id}`, 'DELETE')).status, 204);
     assert.equal((await request(`${enroll}/${learner.id}`, 'DELETE')).status, 204);
     assert.equal((await request(`/users/${learner.id}`, 'PATCH', { isAdmin: true })).status, 200);
+    const racingUser = await createUser('promotion-race@example.test');
+    const race = await Promise.all([
+      request(enroll, 'POST', { userId: racingUser.id, role: 'student' }),
+      request(`/users/${racingUser.id}`, 'PATCH', { isAdmin: true }),
+    ]);
+    assert.deepEqual(race.map((result) => result.status).sort(), race[0].status === 201 ? [201, 409] : [200, 409]);
+    const promoted = await prisma.user.findUniqueOrThrow({ where: { id: racingUser.id } });
+    const memberships = await prisma.enrollment.count({ where: { userId: racingUser.id } });
+    assert.equal(promoted.isAdmin && memberships > 0, false);
   });
 
 });

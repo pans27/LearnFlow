@@ -170,6 +170,50 @@ test('resource API authorization, storage, and dashboard visibility', { skip: !p
     assert.ok(removed instanceof DeleteObjectCommand);
     assert.equal(removed.input.Key, put.input.Key);
   });
+  await t.test('instructor material upload rechecks enrollment role after S3 completes', async () => {
+    const count = await prisma.learningResource.count();
+    const offset = commands.length;
+    afterPut = async () => {
+      await prisma.enrollment.update({ where: { courseId_userId: { courseId: course.id, userId: instructor.id } }, data: { role: 'student' } });
+    };
+    try {
+      assert.equal((await request(path, instructor.cookie, 'POST', pdf('instructor_material'))).status, 403);
+    } finally {
+      afterPut = undefined;
+      await prisma.enrollment.update({ where: { courseId_userId: { courseId: course.id, userId: instructor.id } }, data: { role: 'instructor' } });
+    }
+    assert.equal(await prisma.learningResource.count(), count);
+    const [put, removed] = commands.slice(offset);
+    assert.ok(put instanceof PutObjectCommand && removed instanceof DeleteObjectCommand);
+    assert.equal(put.input.Key, removed.input.Key);
+  });
+  await t.test('PDF search enforces visibility and course boundaries and returns page snippets', async () => {
+    const foreign = await prisma.learningResource.create({ data: { courseId: other.id, ownerId: instructor.id,
+      resourceType: 'instructor_material', title: 'Other course', originalFilename: 'other.pdf', s3Key: 'other/search.pdf' } });
+    for (const resourceId of [shared, privateNote, hiddenMaterial, foreign.id]) {
+      await prisma.resourcePage.createMany({ data: [1, 2].map((pageNumber) => ({
+        courseId: resourceId === foreign.id ? other.id : course.id, resourceId, pageNumber,
+        extractedText: `PostgreSQL transactions resource ${resourceId} page ${pageNumber}`,
+      })) });
+    }
+    const search = `${path}/search?q=PostgreSQL`;
+    assert.equal((await request(search)).status, 401);
+    assert.equal((await request(search, outsider.cookie)).status, 403);
+    for (const [user, expected] of [[student, [shared, privateNote]], [peer, [shared]],
+      [instructor, [shared, hiddenMaterial]], [admin, [shared, hiddenMaterial]]] as const) {
+      const response = await request(search, user.cookie);
+      assert.equal(response.status, 200);
+      assert.deepEqual(response.data.map((item: { resource: { id: number } }) => item.resource.id).sort(), [...expected].sort());
+      for (const item of response.data) {
+        assert.deepEqual(item.matches.map((match: { page: number }) => match.page), [1, 2]);
+        assert.ok(item.matches.every((match: { snippet: string }) => match.snippet.includes('PostgreSQL') && !match.snippet.includes('<b>')));
+      }
+    }
+    assert.deepEqual((await request(`${path}/search?q=unmatchedword`, student.cookie)).data, []);
+    assert.equal((await request(`${path}/search`, student.cookie)).status, 400);
+    assert.equal((await request(`${path}/search?q=one&q=two`, student.cookie)).status, 400);
+    assert.equal((await request(`${path}/search?q=${encodeURIComponent("'; SELECT 1; --")}`, student.cookie)).status, 200);
+  });
   await t.test('deletion enforces ownership and removes resource metadata, jobs, and S3 data', async () => {
     const offset = commands.length;
     assert.equal((await request(`${path}/${shared}`, peer.cookie, 'DELETE')).status, 403);

@@ -19,7 +19,7 @@ export const adminService = {
 
   // Add all memberships to an active course in one transaction.
   createEnrollments(courseId: number, data: BulkEnrollmentData) {
-    return database.withCourse(courseId, async (tx, course) => {
+    return database.withEnrollmentLock(courseId, async (tx, course) => {
       requireActive(course);
       const accounts = await database.findAccounts(tx, data.enrollments.map((entry) => entry.userId));
       if (accounts.length !== data.enrollments.length) throw new HttpError(404, 'A user in the batch was not found');
@@ -95,7 +95,7 @@ export const adminService = {
 
   // Enroll an active account into an active course.
   createEnrollment(courseId: number, userId: number, role: CourseRole) {
-    return database.withCourse(courseId, async (tx, course) => {
+    return database.withEnrollmentLock(courseId, async (tx, course) => {
       // Reject changes to an archived course.
       requireActive(course);
       const user = await database.findActiveAccount(tx, userId);
@@ -108,7 +108,7 @@ export const adminService = {
 
   // Change a membership role only while its course is active.
   updateEnrollment(courseId: number, userId: number, role: CourseRole) {
-    return database.withCourse(courseId, async (tx, course) => {
+    return database.withEnrollmentLock(courseId, async (tx, course) => {
       // Reject changes to an archived course.
       requireActive(course);
       const user = await database.findActiveAccount(tx, userId);

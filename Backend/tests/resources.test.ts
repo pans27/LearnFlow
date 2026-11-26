@@ -24,7 +24,7 @@ test('resource fields accept course PDFs and private student notes', () => {
 
 test('resource search requires a bounded query', () => {
   assert.equal(searchQuery('  transactions  '), 'transactions');
-  assert.equal(searchQuery(['  page text  ']), 'page text');
+  invalid(() => searchQuery(['page text', 'other query']), 'q is required');
   invalid(() => searchQuery(undefined), 'q is required');
   invalid(() => searchQuery('   '), 'q must be nonempty text of at most 200 characters');
   invalid(() => searchQuery('a'.repeat(201)), 'q must be nonempty text of at most 200 characters');

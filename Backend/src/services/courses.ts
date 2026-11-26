@@ -29,7 +29,8 @@ export async function requireCourseAccess(tx: Prisma.TransactionClient, courseId
 export const courseService = {
   // List courses accessible to the current session user.
   list(user: CurrentUser) {
-    return database.read(async (tx) => (await database.list(tx, user)).map(courseResponse));
+    return database.read(async (tx) => (await database.list(tx, user))
+      .map((course) => ({ ...courseResponse(course), ...(user.isAdmin ? { role: null } : {}) })));
   },
 
   // Return one course after checking the current user's access.

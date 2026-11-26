@@ -21,7 +21,9 @@ that are not implemented yet.
 | Assignment submissions | Implemented: PDF upload/replacement, latest submissions with student identities, marks, grade release, and authorized preview/download URLs |
 | Quizzes and quiz grading | Implemented: settings, ordered questions, saved drafts, bounded attempts, automatic/manual question grading, result release, and instructor review |
 | Resources | Implemented: list, upload, detail, preview/download URLs, and deletion backed by S3 |
-| PDF extraction and search | Uploads enqueue jobs; API-managed runner and parsing thread framework exist; parser implementation and search endpoints remain TODO |
+| PDF extraction and search | Implemented: automatic text-layer extraction in worker threads and authorized course-specific full-text search; OCR is not implemented |
+
+Administrators use `/api/admin` to manage accounts, courses, and enrollments. Their `/api/courses` access is read-only, including legacy enrolled accounts: writes return 403 with `Forbidden`. Administrator accounts cannot be enrolled, and users must be removed from all courses before promotion; use separate regular accounts for teaching and learning. Enrollment changes coordinate with promotions using an advisory lock, without locking course rows.
 
 The health endpoint checks process liveness; use `npm run db:check` to check the
 database connection.
@@ -272,7 +274,7 @@ local fallback. Auth cookies use HttpOnly, SameSite=Lax, and Secure in productio
 
 Course access is checked against current enrollments. Regular users cannot read
 archived courses; administrators can read them with `readOnly: true`. A user's
-`role` is null when an administrator accesses a course without enrollment.
+`role` is always null for administrators, including legacy enrolled accounts.
 `GET /api/courses` requires enrollment even for administrators; the admin course
 list is the endpoint for viewing every course. Specific course and dashboard
 reads require enrollment or administrator permission, otherwise they return
@@ -288,8 +290,8 @@ not appear in the upcoming section.
 Students see visible announcements/assignments and visible published quizzes,
 plus shared resources and their own private resources. They receive their own
 latest quiz attempt status or assignment submission status. Instructors and
-administrators also see hidden course materials and draft assessments, with
-management permissions on active courses. Private notes belonging to other
+administrators also see hidden course materials and draft assessments. Only instructors
+receive management permissions on active courses; administrators remain read-only. Private notes belonging to other
 users remain excluded. Answer keys, answers, scores, password hashes, and storage
 keys never appear in dashboard summaries.
 
@@ -310,10 +312,10 @@ verified session and course access.
 | Method | Path | Behavior |
 | --- | --- | --- |
 | GET | `/` | List newest announcements with optional `limit` and `cursor` |
-| POST | `/` | Create an announcement as a course instructor or administrator |
+| POST | `/` | Create an announcement as a course instructor |
 | GET | `/:announcementId` | Read one announcement from this course |
-| PATCH | `/:announcementId` | Edit title, body, or visibility as an instructor/admin |
-| DELETE | `/:announcementId` | Delete an announcement as an instructor/admin; return 204 |
+| PATCH | `/:announcementId` | Edit title, body, or visibility as an instructor |
+| DELETE | `/:announcementId` | Delete an announcement as an instructor; return 204 |
 
 Create with `{"title":"Update","body":"Full announcement text","isVisible":true}`.
 Visibility defaults to true. Titles are limited to 200 characters and bodies to
@@ -323,8 +325,8 @@ cannot be supplied in the body.
 
 Students see only visible announcements; instructors/admins can read hidden ones.
 Hidden announcements return 404 to students, and cross-course IDs return 404.
-Only administrators can read archived courses; announcement writes to archived
-courses return 409. Any instructor in the course can edit/delete its announcements,
+Only administrators can read archived courses; their course writes return 403.
+Any instructor in the course can edit/delete its announcements,
 while editing preserves the original author.
 
 Lists return arrays, ordered by `createdAt` descending and then ID descending.
@@ -338,22 +340,27 @@ configuration. Dashboard announcements continue using the dashboard limit.
 
 ## Resource endpoints
 
-All routes require a session and course access. Regular users must be enrolled in an active course; administrators may read archived courses, but uploads and deletion require an active course.
+All routes require a session and course access. Regular users must be enrolled in an active course; administrators may read archived courses but cannot upload or delete content.
 
 | Method | Path | Behavior |
 | --- | --- | --- |
 | GET | `/api/courses/:courseId/resources` | Return all visible resources; optional `resourceType` filter; no pagination |
+| GET | `/api/courses/:courseId/resources/search?q=...` | Search visible PDF page text and return resource metadata with page/snippet matches |
 | POST | `/api/courses/:courseId/resources` | Upload multipart PDF and return the resource with 201 |
 | GET | `/api/courses/:courseId/resources/:resourceId` | Return metadata and extraction status |
 | GET | `/api/courses/:courseId/resources/:resourceId/preview` | Return `{ url, expiresAt }` for inline preview, valid for 300 seconds |
 | GET | `/api/courses/:courseId/resources/:resourceId/download` | Return `{ url, expiresAt }` for attachment download, valid for 300 seconds |
 | DELETE | `/api/courses/:courseId/resources/:resourceId` | Delete an authorized resource and its S3 object; return 204 |
 
-Uploads accept `file` (a nonempty PDF up to 10 MB), `title` (1?200 trimmed characters), `resourceType` (`instructor_material` or `student_note`), and optional `visibility` (`visible` by default, or `hidden`). Students may upload student notes; instructors and administrators may also upload instructor materials. Uploads create resource metadata and a pending extraction job atomically after storing the PDF in S3; extraction itself is not implemented.
+Uploads accept `file` (a nonempty PDF up to 10 MB), `title` (1-200 trimmed characters), `resourceType` (`instructor_material` or `student_note`), and optional `visibility` (`visible` by default, or `hidden`). Students may upload student notes; instructors may also upload instructor materials. Uploads create resource metadata and a pending extraction job atomically after storing the PDF in S3; the API runner now processes queued jobs automatically with the implemented text-layer parser.
 
-Readers see shared resources and their own private files. Instructors and administrators also see hidden instructor materials and assignment files, but other users' private student notes stay private. Deletion requires ownership or instructor/admin permission and visibility of the resource. The dashboard reuses this visibility filter and returns at most five resources without storage keys.
+Readers see shared resources and their own private files. Instructors and administrators also see hidden instructor materials and assignment files, but other users' private student notes stay private. Deletion requires ownership or instructor permission and visibility of the resource. The dashboard reuses this visibility filter and returns at most five resources without storage keys.
 
-Responses contain `id`, `title`, `resourceType`, `ownerId`, `visibility`, `extractionStatus`, `fileKey`, and `createdAt`. Metadata updates (`PATCH`) and PDF search remain planned.
+Responses contain `id`, `title`, `resourceType`, `ownerId`, `visibility`, `extractionStatus`, `fileKey`, and `createdAt`. Metadata updates (`PATCH`) remain planned; PDF search is implemented.
+
+Search requires a single nonempty trimmed `q` string of at most 200 characters. PostgreSQL English web-search syntax supports words, quoted phrases, OR, and exclusions. Only authorized resources in that course are searched. Results contain at most five matching pages per resource and 250 page hits overall, ordered by resource creation time descending, ID descending, then page ascending, without pagination. Empty matches return []; matches contain page numbers and plain-text snippets. Missing, repeated, or oversized queries return 400.
+
+The enabled `unpdf` parser extracts text layers, preserving blank/image-only pages as empty text. Files are limited to 10 MB, parsing to 500 pages and 30 seconds per document. OCR is not implemented, so scanned image-only PDFs have no searchable text. Poll resource detail for `extractionStatus`; PostgreSQL notifications are not connected. Crash recovery and cleanup retry TODOs remain in the handoff.
 
 Set `AWS_REGION`, `AWS_S3_BUCKET`, `AWS_ACCESS_KEY_ID`, and `AWS_SECRET_ACCESS_KEY` in `Backend/.env` for local development or Docker Compose. The configured AWS credentials need object upload, read, and delete access to the bucket. S3 operations require these settings; metadata reads do not. Rebuild/recreate the API container after changing its environment.
 
@@ -364,20 +371,20 @@ All paths below start with `/api/courses/:courseId/assignments`. Session authent
 | Method | Relative path | Behavior |
 | --- | --- | --- |
 | GET | `/` | List assignments visible to the caller |
-| POST | `/` | Instructor/admin creates an assignment; return 201 with the assignment object |
+| POST | `/` | Instructor creates an assignment; return 201 with the assignment object |
 | GET | `/:assignmentId` | Return assignment details |
-| PATCH | `/:assignmentId` | Instructor/admin updates assignment settings |
-| DELETE | `/:assignmentId` | Instructor/admin deletes an assignment without submissions; return 204 |
+| PATCH | `/:assignmentId` | Instructor updates assignment settings |
+| DELETE | `/:assignmentId` | Instructor deletes an assignment without submissions; return 204 |
 | POST | `/:assignmentId/submissions` | Student uploads or replaces their current PDF; return 200 with submission metadata |
 | GET | `/:assignmentId/submissions/me` | Return the caller's current submission, or 404 |
 | GET | `/:assignmentId/submissions` | Instructor/admin lists each student's latest submission with identity |
-| PATCH | `/:assignmentId/submissions/:submissionId` | Instructor/admin saves `{ "mark": 87.5 }`, or `{ "mark": null }` to clear grading |
+| PATCH | `/:assignmentId/submissions/:submissionId` | Instructor saves `{ "mark": 87.5 }`, or `{ "mark": null }` to clear grading |
 | GET | `/:assignmentId/submissions/:submissionId/download` | Owner or instructor/admin receives a download URL valid for 300 seconds |
 | GET | `/:assignmentId/submissions/:submissionId/preview` | Owner or instructor/admin receives an inline PDF preview URL valid for 300 seconds |
 
 Preview and download return `{ url, expiresAt }` for the current submission file. Preview uses inline `application/pdf` disposition; download uses attachment disposition. Both require submission ownership or instructor/admin permission plus course and assignment access. Other students receive 403; missing or cross-course submissions return 404. Administrators may preview archived courses. Students require an active course and visible assignment; instructors may preview hidden assignments in active courses.
 
-Creation accepts `title` (required, 1-200 trimmed characters), `description` (up to 20000 characters or null), `dueAt` (timestamp with timezone or null), `isVisible` (default false), and `allowResubmission` (default false). PATCH accepts those same fields without changing omitted values. Student uploads require a visible assignment, an active course, and a deadline that has not passed; null `dueAt` has no deadline. Assignments with submissions cannot be deleted (409), preserving student work; hide them instead. Writes to archived courses return 409 for administrators; ordinary users cannot access archived courses (403).
+Creation accepts `title` (required, 1-200 trimmed characters), `description` (up to 20000 characters or null), `dueAt` (timestamp with timezone or null), `isVisible` (default false), and `allowResubmission` (default false). PATCH accepts those same fields without changing omitted values. Student uploads require a visible assignment, an active course, and a deadline that has not passed; null `dueAt` has no deadline. Assignments with submissions cannot be deleted (409), preserving student work; hide them instead. Administrator course writes always return 403; ordinary users cannot access archived courses (403).
 
 Uploads use multipart `file` with one nonempty PDF up to 10 MB and no text fields. Student identity comes from the verified session. A first submission is allowed; subsequent uploads require instructor-controlled `allowResubmission=true`, otherwise 409. Replacement retains the submission ID, replaces the S3 key and filename, and refreshes `submittedAt`; only one row per assignment/student is retained. Concurrent uploads serialize only for that assignment/student, without a course lock. The last committed permitted upload becomes current.
 
@@ -385,13 +392,13 @@ Assignment creation and PATCH also accept `maxMark`, a positive finite number de
 
 Submission responses contain `id`, `courseId`, `assignmentId`, `studentId`, `originalFilename`, `submittedAt`, and `student: { id, name, email }`. Instructor lists include former members' submissions, ordered by student ID, and return an empty array when there are none. Students cannot list peers' work or download their files. Metadata never includes internal S3 keys. Downloads always sign the current file; previously issued URLs remain valid until expiration unless their object has been removed.
 
-Assignment settings also accept `gradesVisible` (default false). Instructors/admins can release stored marks using assignment PATCH with `{ "gradesVisible": true }`, or hide them again with false. Submission `mark` is a finite nonnegative number of points which may exceed the assignment maximum for bonus credit, or null when ungraded. Instructors/admins see stored marks in submission results; students receive null until grades are visible. Grading requires an active course, does not change `submittedAt`, and never grants students access to peers' submissions. Replacing a submission clears its previous mark so the new file must be graded again. Grading and uploads share the per-student assignment lock.
+Assignment settings also accept `gradesVisible` (default false). Instructors can release stored marks using assignment PATCH with `{ "gradesVisible": true }`, or hide them again with false. Submission `mark` is a finite nonnegative number of points which may exceed the assignment maximum for bonus credit, or null when ungraded. Instructors/admins see stored marks in submission results; students receive null until grades are visible. Grading requires an active course, does not change `submittedAt`, and never grants students access to peers' submissions. Replacing a submission clears its previous mark so the new file must be graded again. Grading and uploads share the per-student assignment lock.
 
-Failed database writes attempt cleanup of the new S3 object and preserve the previous submission. After replacement, the previous object is removed; cleanup failures are logged for manual follow-up (durable cleanup retries remain TODO). Assignment submissions are private files and do not enter the shared-resource extraction queue. Additional file formats, frontend assignment UI integration, and final archival remain separate work.
+Failed database writes attempt cleanup of the new S3 object and preserve the previous submission. After replacement, the previous object is removed; cleanup failures are logged for manual follow-up (durable cleanup retries remain TODO). Assignment submissions are private files and do not enter the shared-resource extraction queue. Additional file formats and any further archival policy remain separate work.
 
 ## Quiz endpoints
 
-Paths below start with `/api/courses/:courseId/quizzes`. All require a verified session and course access. Instructors and admins manage quizzes; enrolled students submit their own work. Archived courses are read-only for admins and inaccessible to ordinary users.
+Paths below start with `/api/courses/:courseId/quizzes`. All require a verified session and course access. Instructors manage quizzes; admins have read-only inspection access, and enrolled students submit their own work. Archived courses are read-only for admins and inaccessible to ordinary users.
 
 | Method | Relative path | Behavior |
 | --- | --- | --- |
@@ -431,7 +438,7 @@ Automatic grading gives full points for exact multiple choice set equality (orde
 
 PATCH `{ "showResults": true }` releases results, or false hides them again. Before release, student-facing attempt responses return null for score, question marks, and feedback, and report finalized status as `submitted`. The result endpoint returns 403 until release. Instructors/admins always see finalized grading; answer keys remain manager-only even after release. Students cannot access peers' attempts, and managers cannot read another student's unfinished draft. Instructor lists retain former students' latest finalized work; statistics count only currently enrolled active students.
 
-The backend quiz contract is implemented; the frontend's existing prototype quiz payloads still need adaptation to these numeric IDs, question definitions, and attempt/result responses.
+Frontend quiz and assignment adapters are covered by the check-quizzes and check-assignments frontend tests.
 
 ## Team integration TODOs
 
@@ -447,10 +454,10 @@ Authentication integration:
 File-processing owner:
 
 - Storage upload, authorized preview/download, resource deletion, and pending extraction job creation are connected.
-- Implement `parsePdf` and set `PDF_PARSER_READY=true` to enable the API-managed extraction runner; see the [file-processing handoff](docs/file-processing.md).
+- PDF text-layer parsing is enabled with `unpdf`; the API-managed runner is active. See the [file-processing handoff](docs/file-processing.md) for remaining recovery and OCR work.
 - Quiz finalization now archives private JSON answers in S3 before committing; coordinate any additional assignment archival policy separately.
 
-Next backend slice: course-scoped PDF search; its tables exist, but its endpoint remains planned.
+Course-scoped PDF search is implemented. Remaining work includes extraction crash recovery, cleanup retries, and additional resource metadata endpoints.
 
 ## Verification
 

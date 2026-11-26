@@ -148,7 +148,7 @@ test('session-based course access and role-aware dashboards', {
     await prisma.enrollment.create({ data: { courseId: empty.id, userId: admin.id, role: 'instructor' } });
     const adminCourses = await request('', admin.id);
     assert.deepEqual(adminCourses.data.map((item: { id: number }) => item.id), [empty.id]);
-    assert.equal(adminCourses.data[0].role, 'instructor');
+    assert.equal(adminCourses.data[0].role, null);
     const archivedCourse = await request(`/${archived.id}`, admin.id);
     assert.equal(archivedCourse.status, 200);
     assert.equal(archivedCourse.data.role, null);
