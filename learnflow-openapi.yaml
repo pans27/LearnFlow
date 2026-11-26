@@ -9,6 +9,9 @@ info:
     Authentication uses the HttpOnly learnflow.sid JWT cookie backed by revocable PostgreSQL sessions.
     Admin operations require an active administrator account with no pending password change;
     course lists require enrollment for everyone, while individual course and dashboard reads allow membership or administrator access.
+    Administrator accounts are separate from course members; single/bulk enrollment and role changes reject admins with 409.
+    Users with existing enrollments cannot be promoted to admin until explicitly removed.
+    All non-read course API requests from admins return 403; use separate regular accounts for teaching and learning.
     Archived courses are administrator-only and read-only except for reactivation.
     IDs are positive int32 integers, all course data uses the single learnflow database schema,
     and error bodies contain only message (Unauthorized for 401 and Forbidden for 403).

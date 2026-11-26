@@ -106,11 +106,7 @@ export function CourseLayout() {
   );
   const result = useData(() => api.course(courseId), [courseId]);
   if (!result.data) return <State {...result} />;
-  const fromAdmin =
-    user?.systemRole === "admin" &&
-    (enteredFromAdmin.current ||
-      location.state?.fromAdmin === true ||
-      result.data.role === null);
+  const fromAdmin = user?.systemRole === "admin";
   const backState = fromAdmin ? { fromAdmin: true } : undefined;
   return (
     <>
@@ -146,8 +142,8 @@ export function CourseLayout() {
       <CourseNav fromAdmin={fromAdmin} />
       {fromAdmin && (
         <p className="notice">
-          Read-only administrator view. Use the course workspace as an
-          instructor to manage teaching content.
+          Read-only administrator view. Use a separate instructor or student
+          account to participate in a course.
         </p>
       )}
       <Outlet context={{ ...result.data, readOnly: fromAdmin }} />
@@ -176,7 +172,6 @@ export function AdminLayout() {
         </Link>
         <span className="pill">Administration</span>
         <nav>
-          <Link to="/courses">Course workspace ↗</Link>
           <Button
             variant="ghost"
             onClick={() => void logout().catch((e) => alert(e.message))}

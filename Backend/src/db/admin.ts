@@ -25,7 +25,7 @@ export const adminDb = {
 
   // Fetch account flags for every user in a membership batch.
   findAccounts: (tx: Prisma.TransactionClient, userIds: number[]) =>
-    tx.user.findMany({ where: { id: { in: userIds } }, select: { id: true, isActive: true } }),
+    tx.user.findMany({ where: { id: { in: userIds } }, select: { id: true, isActive: true, isAdmin: true } }),
 
   // Insert all memberships or reject the entire conflicting batch.
   createEnrollments: async (tx: Prisma.TransactionClient, courseId: number, entries: EnrollmentCreateData[]) => {
@@ -70,7 +70,7 @@ export const adminDb = {
   
   // Fetch the account activation flag inside the transaction.
   findActiveAccount: (tx: Prisma.TransactionClient, id: number) =>
-    tx.user.findUnique({ where: { id }, select: { isActive: true } }),
+    tx.user.findUnique({ where: { id }, select: { isActive: true, isAdmin: true } }),
   
   // Insert a course membership inside the transaction.
   createEnrollment: async (tx: Prisma.TransactionClient, courseId: number, userId: number, role: CourseRole) => {
@@ -123,7 +123,15 @@ export const adminDb = {
 
   
   // Check the course and run related database operations atomically.
-  withCourse: withCourseTransaction,
+  withCourse: <T>(courseId: number, operation: Parameters<typeof withCourseTransaction<T>>[1]) =>
+    getPrisma().$transaction(async (tx) => {
+      // Share the promotion lock so enrollment cannot race an admin role change.
+      await tx.$queryRaw`SELECT pg_advisory_xact_lock(1724001)::text`;
+      const course = await tx.course.findUnique({ where: { id: courseId }, select: { id: true, status: true } });
+      if (!course) throw new HttpError(404, 'Course not found');
+      await tx.$queryRaw`SELECT course_id FROM learnflow.courses WHERE course_id = ${courseId} FOR UPDATE`;
+      return operation(tx, course);
+    }),
 
   // Serialize administrator updates using a transaction advisory lock.
   withAdminLock: <T>(operation: (tx: Prisma.TransactionClient) => Promise<T>) =>

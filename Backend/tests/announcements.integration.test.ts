@@ -95,7 +95,7 @@ test('course announcement CRUD, visibility, and pagination', { skip: !process.en
     assert.ok(Number.isFinite(Date.parse(created.data.updatedAt)));
     first = created.data.id;
     hidden = (await request(path, instructor.cookie, 'POST', { title: 'Hidden', body: 'Private', isVisible: false })).data.id;
-    latest = (await request(path, admin.cookie, 'POST', { title: 'Latest', body: 'Visible' })).data.id;
+    latest = (await request(path, instructor.cookie, 'POST', { title: 'Latest', body: 'Visible' })).data.id;
     await prisma.announcement.updateMany({ where: { courseId: course.id }, data: { createdAt: new Date('2026-01-01T00:00:00.123Z') } });
   });
   await t.test('visibility and cursor paging cannot leak hidden or cross-course announcements', async () => {
@@ -130,14 +130,14 @@ test('course announcement CRUD, visibility, and pagination', { skip: !process.en
     const archivedPath = `/${archived.id}/announcements`;
     assert.equal((await request(archivedPath, student.cookie)).status, 403);
     assert.equal((await request(archivedPath, admin.cookie)).status, 200);
-    assert.equal((await request(archivedPath, admin.cookie, 'POST', { title: 'No', body: 'No' })).status, 409);
-    assert.equal((await request(`${archivedPath}/${old.id}`, admin.cookie, 'PATCH', { title: 'No' })).status, 409);
-    assert.equal((await request(`${archivedPath}/${old.id}`, admin.cookie, 'DELETE')).status, 409);
+    assert.equal((await request(archivedPath, admin.cookie, 'POST', { title: 'No', body: 'No' })).status, 403);
+    assert.equal((await request(`${archivedPath}/${old.id}`, admin.cookie, 'PATCH', { title: 'No' })).status, 403);
+    assert.equal((await request(`${archivedPath}/${old.id}`, admin.cookie, 'DELETE')).status, 403);
     assert.equal((await prisma.announcement.findUniqueOrThrow({ where: { id: old.id } })).title, 'Archived');
   });
   await t.test('deletion is scoped and returns an empty response for successful requests', async () => {
     assert.equal((await request(`${path}/${first}`, student.cookie, 'DELETE')).status, 403);
-    assert.equal((await request(`${path}/${foreign.id}`, admin.cookie, 'DELETE')).status, 404);
+    assert.equal((await request(`${path}/${foreign.id}`, admin.cookie, 'DELETE')).status, 403);
     assert.ok(await prisma.announcement.findUnique({ where: { id: foreign.id } }));
     const deleted = await request(`${path}/${first}`, instructor.cookie, 'DELETE');
     assert.equal(deleted.status, 204);

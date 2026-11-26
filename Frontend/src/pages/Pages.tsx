@@ -1,3 +1,4 @@
+import { Navigate } from "react-router-dom";
 import { QuizPreview } from "@/components/QuizPreview";
 import { confirmCourseAction } from "@/lib/course-confirm";
 import { CourseFeedback, VisibilityBadge } from "@/components/CourseFeedback";
@@ -75,7 +76,9 @@ function Title({
   );
 }
 export function Courses() {
+  const { user } = useAuth();
   const r = useData(() => api.courses(), []);
+  if (user?.systemRole === "admin") return <Navigate to="/admin" replace />;
   return (
     <>
       <div className="courses-heading">

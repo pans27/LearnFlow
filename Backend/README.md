@@ -473,3 +473,9 @@ verified JWT/database sessions, administrator authorization, and message-only er
 includes strict validation, enrollment conflicts, archived
 course protection, history retention, cross-course foreign keys, SQL checks,
 full-text indexing, and concurrent last-admin protection.
+
+### Administrator account separation
+
+Administrator accounts manage users, courses, and enrollments through `/api/admin`. Course APIs are read-only for administrators (including accounts with legacy memberships): create, edit, delete, upload, submission, and grading requests return 403. Read access, PDF search, preview, and download retain their existing visibility checks. Use separate regular accounts for instructor/student participation.
+
+Single and bulk enrollment reject administrator accounts with 409. Course role changes also reject legacy admin memberships; removal remains available. Promoting a regular user with enrollments returns 409 until memberships are explicitly removed. Existing content and submissions are retained; no migration or automatic membership deletion is performed.

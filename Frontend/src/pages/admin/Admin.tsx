@@ -736,7 +736,9 @@ function Members({
   if (!result.data) return <DataState {...result} />;
   const { users, enrollments } = result.data;
   const available = users.filter(
-    (user) => !enrollments.some((member) => member.userId === user.id),
+    (user) =>
+      user.systemRole !== "admin" &&
+      !enrollments.some((member) => member.userId === user.id),
   );
   return (
     <>
@@ -846,7 +848,7 @@ function Members({
                       <Button
                         size="sm"
                         variant="outline"
-                        disabled={archived}
+                        disabled={archived || account?.systemRole === "admin"}
                         onClick={() => setTarget({ member, action: "role" })}
                         aria-label={`Change role for ${account?.name ?? member.userId}`}
                       >
@@ -948,10 +950,12 @@ function AddMember({
   const [query, setQuery] = useState("");
   const [selected, setSelected] = useState<Record<string, CourseRole>>({});
   const selectedCount = Object.keys(selected).length;
-  const filtered = users.filter((user) =>
-    `${user.name} ${user.email}`
-      .toLowerCase()
-      .includes(query.trim().toLowerCase()),
+  const filtered = users.filter(
+    (user) =>
+      user.systemRole !== "admin" &&
+      `${user.name} ${user.email}`
+        .toLowerCase()
+        .includes(query.trim().toLowerCase()),
   );
   return (
     <Dialog title="Add course members" busy={busy} onClose={onClose}>
@@ -989,7 +993,8 @@ function AddMember({
             />
           </label>
           <p className="admin-help">
-            Choose up to 100 users. Set a course role for each selected user.
+            Choose up to 100 regular users. Administrator accounts cannot be
+            course members.
           </p>
           <div
             className="admin-member-picker"
