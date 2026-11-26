@@ -23,6 +23,7 @@ export const adminService = {
       requireActive(course);
       const accounts = await database.findAccounts(tx, data.enrollments.map((entry) => entry.userId));
       if (accounts.length !== data.enrollments.length) throw new HttpError(404, 'A user in the batch was not found');
+      if (accounts.some((account) => account.isAdmin)) throw new HttpError(409, 'Administrator accounts cannot be course members. Use a separate regular account.');
       if (accounts.some((account) => !account.isActive)) throw new HttpError(409, 'Cannot enroll an inactive account');
       return database.createEnrollments(tx, courseId, data.enrollments);
     });
@@ -51,6 +52,9 @@ export const adminService = {
     return database.withAdminLock(async (tx) => {
       const user = await database.findUserForUpdate(tx, id);
       if (!user) throw new HttpError(404, 'User not found');
+      if (data.isAdmin === true && !user.isAdmin && await tx.enrollment.count({ where: { userId: id } })) {
+        throw new HttpError(409, 'Remove this user from all courses before making them an administrator. Existing coursework will be retained.');
+      }
       if (user.isAdmin && user.isActive && data.isAdmin === false) {
         const count = await database.countActiveAdmins(tx);
         if (count <= 1) throw new HttpError(409, 'Cannot remove the last active administrator');
@@ -97,6 +101,7 @@ export const adminService = {
       const user = await database.findActiveAccount(tx, userId);
       if (!user) throw new HttpError(404, 'User not found');
       if (!user.isActive) throw new HttpError(409, 'Cannot enroll an inactive account');
+      if (user.isAdmin) throw new HttpError(409, 'Administrator accounts cannot be course members. Use a separate regular account.');
       return database.createEnrollment(tx, courseId, userId, role);
     });
   },
@@ -106,6 +111,9 @@ export const adminService = {
     return database.withCourse(courseId, async (tx, course) => {
       // Reject changes to an archived course.
       requireActive(course);
+      const user = await database.findActiveAccount(tx, userId);
+      if (!user) throw new HttpError(404, 'User not found');
+      if (user.isAdmin) throw new HttpError(409, 'Administrator accounts cannot be course members. Remove this legacy membership instead.');
       return database.updateEnrollment(tx, courseId, userId, role);
     });
   },

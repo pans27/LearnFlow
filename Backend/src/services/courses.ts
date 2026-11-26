@@ -23,7 +23,7 @@ export async function requireCourseAccess(tx: Prisma.TransactionClient, courseId
   if (!user.isAdmin && (course.status !== 'active' || !course.enrollments.length)) {
     throw new HttpError(403, 'Forbidden');
   }
-  return courseResponse(course);
+  return { ...courseResponse(course), ...(user.isAdmin ? { role: null } : {}) };
 }
 
 export const courseService = {
@@ -42,7 +42,7 @@ export const courseService = {
     return database.read(async (tx) => {
       const course = await requireCourseAccess(tx, courseId, user);
       const instructor = user.isAdmin || course.role === 'instructor';
-      const readOnly = course.status === 'archived';
+      const readOnly = user.isAdmin || course.status === 'archived';
       const canManage = instructor && !readOnly;
       const now = new Date();
       const [announcements, assignments, quizzes, resources] = await Promise.all([

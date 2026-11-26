@@ -94,7 +94,7 @@ test('resource API authorization, storage, and dashboard visibility', { skip: !p
     assert.deepEqual(await request(path), { status: 401, data: { message: 'Unauthorized' } });
     assert.deepEqual(await request(path, outsider.cookie), { status: 403, data: { message: 'Forbidden' } });
     assert.equal((await request(path, student.cookie, 'POST', pdf('instructor_material'))).status, 403);
-    assert.equal((await request(`/${archived.id}/resources`, admin.cookie, 'POST', pdf())).status, 409);
+    assert.equal((await request(`/${archived.id}/resources`, admin.cookie, 'POST', pdf())).status, 403);
     assert.equal(commands.length, 0);
     const uploaded = await request(path, student.cookie, 'POST', pdf());
     assert.equal(uploaded.status, 201);
@@ -183,6 +183,6 @@ test('resource API authorization, storage, and dashboard visibility', { skip: !p
     assert.ok(removed instanceof DeleteObjectCommand);
     assert.equal(removed.input.Key, row.s3Key);
     assert.equal((await request(`${path}/${shared}`, instructor.cookie, 'DELETE')).status, 204);
-    assert.equal((await request(`${path}/${hiddenMaterial}`, admin.cookie, 'DELETE')).status, 204);
+    assert.equal((await request(`${path}/${hiddenMaterial}`, instructor.cookie, 'DELETE')).status, 204);
   });
 });

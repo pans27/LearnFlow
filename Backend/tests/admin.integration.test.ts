@@ -145,11 +145,12 @@ test('admin API and single-schema database integrity', {
 
   await t.test('bulk membership changes are atomic and scoped to the selected active course', async () => {
     const path = `/courses/${courseId}/enrollments`;
+    const courseInstructor = await createUser('bulk-instructor@example.test');
     const batchUser = await createUser('batch@example.test');
     const other = await prisma.course.create({ data: { name: 'Separate', courseCode: 'OTHER' } });
     await prisma.enrollment.create({ data: { courseId: other.id, userId: student.id, role: 'student' } });
     assert.equal((await request(`${path}/bulk`, 'POST', { enrollments: [
-      { userId: student.id, role: 'student' }, { userId: admin.id, role: 'instructor' },
+      { userId: student.id, role: 'student' }, { userId: courseInstructor.id, role: 'instructor' },
     ] })).status, 201);
     assert.equal((await request(path)).data.length, 2);
     assert.equal((await request(`${path}/bulk`, 'POST', { enrollments: [
@@ -162,7 +163,7 @@ test('admin API and single-schema database integrity', {
     assert.equal((await request(`${path}/bulk-remove`, 'POST', { userIds: [student.id] })).status, 409);
     assert.equal((await request(`${path}/bulk`, 'POST', { enrollments: [{ userId: batchUser.id, role: 'student' }] })).status, 409);
     await request(`/courses/${courseId}/status`, 'PATCH', { status: 'active' });
-    assert.equal((await request(`${path}/bulk-remove`, 'POST', { userIds: [student.id, admin.id] })).status, 204);
+    assert.equal((await request(`${path}/bulk-remove`, 'POST', { userIds: [student.id, courseInstructor.id] })).status, 204);
     assert.equal((await request(path)).data.length, 0);
     assert.equal(await prisma.enrollment.count({ where: { courseId: other.id, userId: student.id } }), 1);
   });
@@ -256,6 +257,43 @@ test('admin API and single-schema database integrity', {
     assert.deepEqual(await request('/courses'), { status: 401, data: { message: 'Unauthorized' } });
     await login(result.user.email, 'ReplacementPassword123!');
     assert.equal((await request('/courses')).status, 200);
+  });
+
+  await t.test('administrators are separate from course members and course APIs are read-only', async () => {
+    const isolatedAdmin = await createUser('readonly-admin@example.test', true);
+    const learner = await createUser('membership-candidate@example.test');
+    const course = await prisma.course.create({ data: { name: 'Account separation', courseCode: 'SEP' } });
+    await login(isolatedAdmin.email);
+    const enroll = `/courses/${course.id}/enrollments`;
+    assert.equal((await request(enroll, 'POST', { userId: isolatedAdmin.id, role: 'student' })).status, 409);
+    assert.equal((await request(`${enroll}/bulk`, 'POST', { enrollments: [
+      { userId: learner.id, role: 'student' }, { userId: isolatedAdmin.id, role: 'instructor' },
+    ] })).status, 409);
+    assert.equal(await prisma.enrollment.count({ where: { courseId: course.id } }), 0);
+    assert.equal((await request(enroll, 'POST', { userId: learner.id, role: 'student' })).status, 201);
+    assert.equal((await request(`/users/${learner.id}`, 'PATCH', { isAdmin: true })).status, 409);
+    assert.equal((await prisma.user.findUniqueOrThrow({ where: { id: learner.id } })).isAdmin, false);
+    // An existing legacy membership never grants an administrator teaching permissions.
+    await prisma.enrollment.create({ data: { courseId: course.id, userId: isolatedAdmin.id, role: 'instructor' } });
+    assert.equal((await request(`${enroll}/${isolatedAdmin.id}`, 'PATCH', { role: 'student' })).status, 409);
+    for (const section of ['announcements', 'quizzes', 'assignments', 'resources']) {
+      for (const [method, suffix] of [['POST', ''], ['PATCH', '/1'], ['DELETE', '/1']] as const) {
+        const response = await fetch(`${origin}/api/courses/${course.id}/${section}${suffix}`, {
+          method, headers: { Cookie: cookie, 'Content-Type': 'application/json' }, body: '{}',
+        });
+        assert.equal(response.status, 403, `${method} ${section}`);
+      }
+      const response = await fetch(`${origin}/api/courses/${course.id}/${section}`, { headers: { Cookie: cookie } });
+      assert.equal(response.status, 200);
+    }
+    const dashboard = await fetch(`${origin}/api/courses/${course.id}/dashboard`, { headers: { Cookie: cookie } });
+    const view = await dashboard.json();
+    assert.equal(view.readOnly, true);
+    assert.equal(view.course.role, null);
+    assert.ok(Object.values(view.permissions).every((value) => value === false));
+    assert.equal((await request(`${enroll}/${isolatedAdmin.id}`, 'DELETE')).status, 204);
+    assert.equal((await request(`${enroll}/${learner.id}`, 'DELETE')).status, 204);
+    assert.equal((await request(`/users/${learner.id}`, 'PATCH', { isAdmin: true })).status, 200);
   });
 
 });

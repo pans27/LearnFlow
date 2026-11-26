@@ -260,8 +260,8 @@ test('quiz attempts, grading, answer privacy, and instructor review', { skip: !p
   await t.test('archived courses reject mutations while administrators retain history access', async () => {
     await prisma.course.update({ where: { id: course.id }, data: { status: 'archived' } });
     assert.equal((await request(path, student.cookie)).status, 403);
-    assert.equal((await request(`${path}/${quizId}`, admin.cookie, 'PATCH', { showResults: false })).status, 409);
-    assert.equal((await request(`${path}/${quizId}/submissions/${first}/grade`, admin.cookie, 'PATCH', { grades: [{ questionId: manual, mark: 4 }] })).status, 409);
+    assert.equal((await request(`${path}/${quizId}`, admin.cookie, 'PATCH', { showResults: false })).status, 403);
+    assert.equal((await request(`${path}/${quizId}/submissions/${first}/grade`, admin.cookie, 'PATCH', { grades: [{ questionId: manual, mark: 4 }] })).status, 403);
     assert.equal((await request(`${path}/${quizId}/submissions`, admin.cookie)).status, 200);
   });
 });
