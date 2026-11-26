@@ -63,3 +63,13 @@ export type PresignedUrlResponse = {
   url: string;
   expiresAt: string;
 };
+
+export type ResourceSearchMatch = {
+  page: number;
+  snippet: string;
+};
+
+export type ResourceSearchResult = {
+  resource: ResourceRecord;
+  matches: ResourceSearchMatch[];
+};

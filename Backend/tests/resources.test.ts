@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { HttpError } from '../src/errors';
-import { assertPdf, resourceFields } from '../src/validation/resources';
+import { assertPdf, resourceFields, searchQuery } from '../src/validation/resources';
 
 const invalid = (fn: () => unknown, message?: string) => assert.throws(fn, (error: unknown) =>
   error instanceof HttpError && error.status === 400 && (message === undefined || error.message === message));
@@ -20,4 +20,12 @@ test('resource fields accept course PDFs and private student notes', () => {
   assert.equal(resourceFields({ title: 'Lecture', resourceType: 'instructor_material' }).isVisible, true);
   invalid(() => resourceFields({ title: 'Lecture', resourceType: 'assignment_file' }), 'Invalid resource type');
   invalid(() => resourceFields({ title: ' ', resourceType: 'student_note' }), 'title must be nonempty text of at most 200 characters');
+});
+
+test('resource search requires a bounded query', () => {
+  assert.equal(searchQuery('  transactions  '), 'transactions');
+  assert.equal(searchQuery(['  page text  ']), 'page text');
+  invalid(() => searchQuery(undefined), 'q is required');
+  invalid(() => searchQuery('   '), 'q must be nonempty text of at most 200 characters');
+  invalid(() => searchQuery('a'.repeat(201)), 'q must be nonempty text of at most 200 characters');
 });

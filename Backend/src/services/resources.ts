@@ -34,6 +34,14 @@ export const resourceService = {
     });
   },
 
+  // Search visible PDF page text after confirming the account can open the course.
+  search(courseId: number, user: CurrentUser, query: string) {
+    return courseDb.read(async (tx) => {
+      const course = await requireCourseAccess(tx, courseId, user);
+      return resourceDb.search(tx, courseId, user.id, canManage(user, course.role), query);
+    });
+  },
+
   // Return one resource and its extraction status.
   get(courseId: number, resourceId: number, user: CurrentUser) {
     return courseDb.read((tx) => visibleResource(tx, courseId, resourceId, user));

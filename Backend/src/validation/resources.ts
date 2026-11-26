@@ -26,3 +26,12 @@ export function resourceFields(fields: Record<string, string>): ResourceUploadFi
   }
   return { title, resourceType: fields.resourceType, isVisible: fields.visibility !== 'hidden' };
 }
+
+// Require a short search phrase. PostgreSQL parses the words, so the raw text stays bounded.
+export function searchQuery(value: unknown): string {
+  const text = Array.isArray(value) ? value[0] : value;
+  if (typeof text !== 'string') throw new HttpError(400, 'q is required');
+  const query = text.trim();
+  if (!query || query.length > 200) throw new HttpError(400, 'q must be nonempty text of at most 200 characters');
+  return query;
+}

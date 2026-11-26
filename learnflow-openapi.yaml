@@ -3579,11 +3579,12 @@ paths:
 
   /api/courses/{courseId}/resources/search:
     get:
-      x-implementation-status: planned
+      x-implementation-status: implemented
       tags:
       - Resources
       operationId: get_api_courses_courseId_resources_search
-      summary: "[Planned] Search PDF contents in course"
+      summary: "Search PDF contents in course"
+      description: Search extracted page text for resources the current account can see. Matching pages include a short snippet. An empty result is 200 with [].
       parameters:
       - $ref: '#/components/parameters/courseId'
       - name: q

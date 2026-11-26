@@ -10,7 +10,7 @@ let extractionRunner: Promise<void> = Promise.resolve();
 
 const server = app.listen(config.port, () => {
   console.log(`LearnFlow API listening on http://localhost:${config.port}`);
-  // TODO(file processing): implement parsePdf and mark it ready to begin consuming queued jobs.
+  // Consume queued extraction jobs once the tested parser is enabled.
   if (PDF_PARSER_READY) {
     extractionRunner = runExtractionWorker(processPdf, { signal: extractionShutdown.signal }).catch((error) => {
       console.error('Extraction runner stopped:', error);

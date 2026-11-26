@@ -23,5 +23,4 @@ export async function processNextExtraction(processPdf: PdfProcessor): Promise<E
   }
 }
 
-// TODO(file processing): implement S3 PDF reading and page text extraction as a PdfProcessor.
 // TODO(file processing): add leases and recovery for interrupted processing jobs.

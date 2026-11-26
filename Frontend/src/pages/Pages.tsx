@@ -1516,7 +1516,7 @@ function CourseResources() {
     }
     const [resources, pdfResults] = await Promise.all([
       api.resources(c.id),
-      isMock ? api.searchResources(c.id, search) : Promise.resolve([]),
+      api.searchResources(c.id, search),
     ]);
     const results = new Map(
       pdfResults.map((result) => [result.resource.id, result]),
@@ -1573,16 +1573,8 @@ function CourseResources() {
           <Search size={18} aria-hidden="true" />
           <input
             ref={searchInput}
-            placeholder={
-              isMock
-                ? "Search file names or PDF text…"
-                : "Search resource titles…"
-            }
-            aria-label={
-              isMock
-                ? "Search file names or PDF text"
-                : "Search resource titles"
-            }
+            placeholder="Search titles or PDF text…"
+            aria-label="Search titles or PDF text"
             value={query}
             onChange={(e) => {
               setQuery(e.target.value);
@@ -1606,17 +1598,11 @@ function CourseResources() {
         </div>
         <Button type="submit">Search</Button>
       </form>
-      {isMock && (
-        <p className="notice resource-notice">
-          Search uploaded files by title or filename. To try PDF text search,
-          use “authentication” or “API” in the sample PDFs.
-        </p>
-      )}
-      {!isMock && (
-        <p className="notice resource-notice">
-          PDF uploads up to 10 MB. Search currently matches resource titles.
-        </p>
-      )}
+      <p className="notice resource-notice">
+        {isMock
+          ? "Search uploaded files by title or filename. To try PDF text search, use “authentication” or “API” in the sample PDFs."
+          : "Search matches titles and words inside PDFs marked Ready."}
+      </p>
       {c.status === "archived" && (
         <p className="notice">Archived course. Resources are read-only.</p>
       )}
@@ -1726,9 +1712,7 @@ function CourseResources() {
       ) : r.data.length === 0 ? (
         <p className="panel">
           {search
-            ? isMock
-              ? "No files or PDF text matched your search."
-              : "No resource titles matched your search."
+            ? "No titles or PDF text matched your search."
             : "No resources yet."}
         </p>
       ) : (

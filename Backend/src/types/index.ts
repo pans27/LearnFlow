@@ -31,6 +31,7 @@ export type {
 export type {
   ResourceType, ResourceUploadFields, ResourceFile, UploadedPdf, ResourceCreateData, ResourceDatabaseRecord,
   StoredResourceType, ExtractionStatus, ResourceRecord, ResourceResponse, PresignedUrlResponse,
+  ResourceSearchMatch, ResourceSearchResult,
 } from './resources';
 export type {
   DashboardAnnouncement, DashboardAssessment, DashboardResource, DashboardPermissions,

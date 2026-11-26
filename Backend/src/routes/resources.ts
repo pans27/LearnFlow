@@ -6,6 +6,7 @@ const router = Router({ mergeParams: true });
 
 router.use(validateIds);
 router.get('/', controller.list);
+router.get('/search', controller.search);
 router.post('/', controller.upload);
 router.get('/:resourceId/preview', validateIds, controller.preview);
 router.get('/:resourceId/download', validateIds, controller.download);

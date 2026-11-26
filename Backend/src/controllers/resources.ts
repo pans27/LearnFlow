@@ -5,7 +5,7 @@ import { requireUser } from '../middleware/current-user';
 import { requireId } from '../middleware/validation';
 import { readPdfUpload } from '../middleware/upload';
 import { resourceService } from '../services/resources';
-import { assertPdf, resourceFields } from '../validation/resources';
+import { assertPdf, resourceFields, searchQuery } from '../validation/resources';
 
 // Return the public resource record without its storage key internals beyond fileKey.
 function resourceResponse(item: ResourceRecord): ResourceResponse {
@@ -23,6 +23,12 @@ export const list: RequestHandler = handleRequest(async (req, res) => {
   }
   const items = await resourceService.list(requireId(res, 'courseId'), requireUser(res), type);
   res.json(items.map(resourceResponse));
+});
+
+// Search extracted PDF text in resources the current account can see.
+export const search: RequestHandler = handleRequest(async (req, res) => {
+  const results = await resourceService.search(requireId(res, 'courseId'), requireUser(res), searchQuery(req.query.q));
+  res.json(results.map(({ resource, matches }) => ({ resource: resourceResponse(resource), matches })));
 });
 
 // Return one resource and its extraction status.
